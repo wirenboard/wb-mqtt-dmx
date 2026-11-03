@@ -40,23 +40,27 @@ def test_shipped_config_is_valid_for_the_schema():
     s = schema.build_schema(TEMPLATES)
     shipped = json.loads((ROOT / "wb-mqtt-dmx.conf").read_text(encoding="utf-8"))
     jsonschema.validate(shipped, s)
-    full = {**shipped, "devices": [{"id": "facade", "name": "Фасад", "type": "rgbw", "universe": 1, "address": 0,
-                                    "count": 40}]}
-    jsonschema.validate(full, s)
+    def with_devices(devices):
+        return {"ports": [{**shipped["ports"][0], "devices": devices}]}
+    jsonschema.validate(with_devices([{"id": "facade", "name": "Фасад", "type": "rgbw", "address": 0, "count": 40}]), s)
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate({**shipped, "devices": [{"id": "Bad", "type": "rgbw"}]}, s)
+        jsonschema.validate(with_devices([{"id": "Bad", "type": "rgbw"}]), s)
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate({**shipped, "devices": [{"id": "x", "type": "nope"}]}, s)
+        jsonschema.validate(with_devices([{"id": "x", "type": "nope"}]), s)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"ports": []}, s)
 
 
 def test_schema_lists_template_types_with_titles_and_translations():
     s = schema.build_schema(TEMPLATES)
-    dev = s["properties"]["devices"]["items"]["properties"]["type"]
+    port = s["properties"]["ports"]["items"]
+    dev = port["properties"]["devices"]["items"]["properties"]["type"]
     assert dev["enum"] == ["dimmer", "rgb", "grb", "rgbw", "grbw", "drgb", "drgbw", "cct", "rgbcct"]
     assert dev["options"]["enum_titles"][dev["enum"].index("rgbw")] == "RGBW (4 ch)"
     assert s["translations"]["ru"]["RGBW (4 ch)"] == "RGBW (4 канала)"
     assert s["configFile"] == {"path": "/etc/wb-mqtt-dmx.conf", "service": "wb-mqtt-dmx"}
-    adv = s["properties"]["universes"]["items"]["properties"]["advanced"]
+    adv = port["properties"]["advanced"]
+    assert port["title"] == "Port" and s["translations"]["ru"]["Ports"] == "Порты"
     assert adv["options"]["collapsed"] is True and "start_scene" in adv["properties"]
 
 

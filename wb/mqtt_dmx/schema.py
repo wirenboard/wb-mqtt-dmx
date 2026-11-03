@@ -18,31 +18,31 @@ SCHEMA_PATH = Path("/var/lib/wb-mqtt-confed/schemas/wb-mqtt-dmx.schema.json")
 UNIVERSE_SIZE = 512
 
 TITLE = "DMX512 output"
-DESCRIPTION = ("DMX512 fixtures driven from the controller's own RS-485 port or a WBE2 RS-485 module. A universe "
-               "is one DMX line. The port must be disabled in the serial device driver settings first "
+DESCRIPTION = ("DMX512 fixtures driven from the controller's own RS-485 ports or WBE2 RS-485 modules. Each port is "
+               "one DMX line with its devices. A port must be disabled in the serial device driver settings first "
                "(Settings → Configuration files → Serial device driver), the same way as for wb-mqtt-mbgate.")
 PORT_DESCRIPTION = "/dev/ttyRS485-1, /dev/ttyRS485-2 or a WBE2 module port such as /dev/ttyMOD1."
 REFRESH_DESCRIPTION = "Frames per second on the line. 40 is the maximum for 512 channels; LED decoders are fine with 25–40."
 ON_START_DESCRIPTION = "What the line shows after the service starts (reboot, config save)."
 ON_STOP_DESCRIPTION = ("What happens when the service stops. Hold: frames just stop and the decoders keep their last "
                        "values until their own timeout. Blackout: all channels are set to 0 first.")
-RAW_DESCRIPTION = ("Expose the first N channels of the universe as a device dmx_uN with sliders ch1…chN, for devices "
-                   "without a template and for wb-rules. 0: no such device.")
+RAW_DESCRIPTION = ("Expose the first N channels of the line as a device dmx_<port> with sliders ch1…chN "
+                   "(dmx_rs485_2 for /dev/ttyRS485-2), for devices without a template and for wb-rules. 0: no such device.")
 START_SCENE_DESCRIPTION = "Channel values applied at start when 'Scene' is selected above; other channels are 0."
 DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
-ADDRESS_DESCRIPTION = "First DMX channel of the device. 0 places it right after the previous device of the same universe."
+ADDRESS_DESCRIPTION = "First DMX channel of the device. 0 places it right after the previous device on this port."
 COUNT_DESCRIPTION = ("Number of identical devices; they take consecutive addresses and get ids <id>1…<id>N plus a "
                      "group device <id> that drives them all.")
 ID_DESCRIPTION = "MQTT device id without the dmx_ prefix: 'facade' gives dmx_facade. Latin letters, digits, underscore."
-UNIVERSE_DESCRIPTION = "Id of the universe (DMX line) the device is wired to."
 
 RU = {
     TITLE: "Выход DMX512",
-    DESCRIPTION: "DMX512-приборы, управляемые с порта RS-485 контроллера или модуля WBE2 RS-485. Вселенная — одна "
-                 "линия DMX. Порт нужно сначала отключить в настройках драйвера последовательных устройств "
-                 "(Настройки → Конфигурационные файлы → Настройка драйвера serial-устройств), как для wb-mqtt-mbgate.",
-    "Universes": "Вселенные (линии DMX)", "Universe": "Вселенная", "Id": "Номер", "Name": "Название",
+    DESCRIPTION: "DMX512-приборы, управляемые с портов RS-485 контроллера или модулей WBE2 RS-485. Порт — одна "
+                 "линия DMX со своими приборами. Порт нужно сначала отключить в настройках драйвера последовательных "
+                 "устройств (Настройки → Конфигурационные файлы → Настройка драйвера serial-устройств), как для "
+                 "wb-mqtt-mbgate.",
+    "Ports": "Порты", "Port": "Порт", "Device": "Прибор", "Name": "Название",
     "Serial port": "Порт", "Frame rate, Hz": "Частота кадров, Гц", "On start": "При старте",
     "On stop": "При остановке", "Restore last values": "Восстановить последние значения",
     "All channels 0": "Все каналы в 0", "Scene": "Сцена", "Hold last frame": "Оставить как есть",
@@ -58,17 +58,16 @@ RU = {
     ON_START_DESCRIPTION: "Что на линии после запуска сервиса (перезагрузка, сохранение настроек).",
     ON_STOP_DESCRIPTION: "Что происходит при остановке сервиса. Оставить: кадры просто прекращаются, декодеры держат "
                          "последние значения до своего таймаута. Погасить: сначала все каналы ставятся в 0.",
-    RAW_DESCRIPTION: "Опубликовать первые N каналов вселенной как устройство dmx_uN с ползунками ch1…chN — для "
-                     "приборов без шаблона и для wb-rules. 0 — устройства нет.",
+    RAW_DESCRIPTION: "Опубликовать первые N каналов линии как устройство dmx_<порт> с ползунками ch1…chN "
+                     "(dmx_rs485_2 для /dev/ttyRS485-2) — для приборов без шаблона и для wb-rules. 0 — устройства нет.",
     START_SCENE_DESCRIPTION: "Значения каналов при старте, если выше выбрана «Сцена»; остальные каналы — 0.",
     DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
                     "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
-    ADDRESS_DESCRIPTION: "Первый DMX-канал прибора. 0 — сразу после предыдущего прибора той же вселенной.",
+    ADDRESS_DESCRIPTION: "Первый DMX-канал прибора. 0 — сразу после предыдущего прибора на этом порту.",
     COUNT_DESCRIPTION: "Сколько одинаковых приборов; они займут адреса подряд и получат идентификаторы <id>1…<id>N "
                        "плюс групповое устройство <id>, управляющее всеми сразу.",
     ID_DESCRIPTION: "Идентификатор MQTT-устройства без префикса dmx_: «facade» даст dmx_facade. Латинские буквы, "
                     "цифры, подчёркивание.",
-    UNIVERSE_DESCRIPTION: "Номер вселенной (линии DMX), к которой подключён прибор.",
 }
 
 
@@ -77,7 +76,7 @@ def _int(title: str, minimum: int, maximum: int, default: int, order: int, **ext
             "propertyOrder": order, **extra}
 
 
-def universe_schema() -> dict[str, Any]:
+def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
     advanced = {
         "type": "object", "title": "Advanced", "propertyOrder": 100,
         "options": {"collapsed": True, "disable_edit_json": True, "disable_properties": True},
@@ -108,13 +107,13 @@ def universe_schema() -> dict[str, Any]:
     }
     return {
         "type": "object",
-        "headerTemplate": "{{self.name}} — {{self.port}}",
+        "title": "Port",
+        "headerTemplate": "{{self.path}} — {{self.name}}",
         "properties": {
-            "id": _int("Id", 1, 64, 1, 1, options={"grid_columns": 2}),
+            "path": {"type": "string", "title": "Serial port", "minLength": 1, "default": "/dev/ttyRS485-2",
+                     "propertyOrder": 1, "description": PORT_DESCRIPTION, "options": {"grid_columns": 6}},
             "name": {"type": "string", "title": "Name", "default": "DMX 1", "propertyOrder": 2,
-                     "options": {"grid_columns": 4}},
-            "port": {"type": "string", "title": "Serial port", "minLength": 1, "default": "/dev/ttyRS485-2",
-                     "propertyOrder": 3, "description": PORT_DESCRIPTION, "options": {"grid_columns": 6}},
+                     "options": {"grid_columns": 6}},
             "refresh_hz": _int("Frame rate, Hz", 1, 44, 40, 4, description=REFRESH_DESCRIPTION,
                                options={"grid_columns": 4}),
             "on_start": {"type": "string", "title": "On start", "enum": ["restore", "zero", "scene"],
@@ -125,8 +124,13 @@ def universe_schema() -> dict[str, Any]:
                         "propertyOrder": 6, "description": ON_STOP_DESCRIPTION,
                         "options": {"enum_titles": ["Hold last frame", "Blackout"], "grid_columns": 4}},
             "advanced": advanced,
+            "devices": {
+                "type": "array", "title": "Devices", "propertyOrder": 200,
+                "items": device_schema(templates),
+                "options": {"disable_array_reorder": True, "disable_collapse": True},
+            },
         },
-        "required": ["id", "port"],
+        "required": ["path", "devices"],
         "options": {"disable_edit_json": True, "disable_properties": True},
     }
 
@@ -145,6 +149,7 @@ def device_schema(templates: dict[str, Template]) -> dict[str, Any]:
     titles = [templates[t].title["en"] for t in types]
     return {
         "type": "object",
+        "title": "Device",
         "headerTemplate": "{{self.name}} ({{self.type}}) × {{self.count}}",
         "properties": {
             "id": {"type": "string", "title": "Device id", "pattern": "^[a-z0-9_]{1,32}$", "propertyOrder": 1,
@@ -152,10 +157,9 @@ def device_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "name": {"type": "string", "title": "Name", "propertyOrder": 2, "options": {"grid_columns": 4}},
             "type": {"type": "string", "title": "Type", "enum": types or ["dimmer"], "default": types[0] if types else "dimmer",
                      "propertyOrder": 3, "options": {"enum_titles": titles or ["Dimmer"], "grid_columns": 4}},
-            "universe": _int("Universe", 1, 64, 1, 4, description=UNIVERSE_DESCRIPTION, options={"grid_columns": 4}),
-            "address": _int("Start address", 0, UNIVERSE_SIZE, 0, 5, description=ADDRESS_DESCRIPTION,
-                            options={"grid_columns": 4}),
-            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 6, description=COUNT_DESCRIPTION, options={"grid_columns": 4}),
+            "address": _int("Start address", 0, UNIVERSE_SIZE, 0, 4, description=ADDRESS_DESCRIPTION,
+                            options={"grid_columns": 6}),
+            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 5, description=COUNT_DESCRIPTION, options={"grid_columns": 6}),
         },
         "required": ["id", "type"],
         "options": {"disable_edit_json": True, "disable_properties": True},
@@ -174,18 +178,13 @@ def build_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "configFile": {"path": CONFIG_PATH, "service": SERVICE},
         "options": {"disable_edit_json": True, "disable_properties": True, "disable_collapse": True},
         "properties": {
-            "universes": {
-                "type": "array", "title": "Universes", "propertyOrder": 1, "minItems": 1,
-                "items": universe_schema(),
-                "options": {"disable_array_reorder": True, "disable_collapse": True},
-            },
-            "devices": {
-                "type": "array", "title": "Devices", "propertyOrder": 2,
-                "items": device_schema(templates),
+            "ports": {
+                "type": "array", "title": "Ports", "propertyOrder": 1, "minItems": 1,
+                "items": port_schema(templates),
                 "options": {"disable_array_reorder": True, "disable_collapse": True},
             },
         },
-        "required": ["universes", "devices"],
+        "required": ["ports"],
         "translations": {"ru": ru},
     }
 
