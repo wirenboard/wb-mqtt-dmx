@@ -116,4 +116,8 @@ class FrameSender:
                 next_retry = now + RETRY_S
                 self._state(False, str(e))
         self.port.close()
-        self._state(False, self.error)
+        if self.running:
+            self.running = False
+            LOG.info("%s: stopped after %d frames, %d late", self.port.path, self.frames, self.late_frames)
+            if self.on_state is not None:
+                self.on_state(self)

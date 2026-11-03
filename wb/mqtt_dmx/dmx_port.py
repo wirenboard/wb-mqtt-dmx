@@ -111,6 +111,7 @@ class DmxPort:
         self.frames = 0
         self.drain_fallbacks = 0
         self._saved_rs485: Optional[bytes] = None
+        self._saved_termios: Optional[bytes] = None
 
     # ---- open / close ----------------------------------------------------------------------
 
@@ -145,11 +146,19 @@ class DmxPort:
             except (OSError, DmxPortError):
                 pass
             self._saved_rs485 = None
+        if self._saved_termios is not None:
+            # Leave the line as we found it (speed, framing), the way wb-mqtt-serial does.
+            try:
+                self.ops.ioctl(fd, TCSETS2, self._saved_termios)
+            except (OSError, DmxPortError):
+                pass
+            self._saved_termios = None
         self.ops.close(fd)
 
     def _set_line(self, fd: int) -> None:
         """250000 8N2, raw, no flow control, via termios2."""
         raw = self.ops.ioctl(fd, TCGETS2, bytes(struct.calcsize(TERMIOS2_FMT)))
+        self._saved_termios = raw
         _iflag, _oflag, cflag, _lflag, line, cc, _ispeed, _ospeed = struct.unpack(TERMIOS2_FMT, raw)
         cflag &= ~(CBAUD | CSIZE | PARENB | CRTSCTS)
         cflag |= BOTHER | CS8 | CSTOPB | CREAD | CLOCAL
