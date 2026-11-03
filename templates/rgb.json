@@ -1,0 +1,33 @@
+{
+  "type": "rgb",
+  "title": {
+    "en": "RGB (3 ch)",
+    "ru": "RGB (3 канала)"
+  },
+  "channels": [
+    {
+      "id": "red",
+      "title": {
+        "en": "Red",
+        "ru": "Красный"
+      },
+      "default": 0
+    },
+    {
+      "id": "green",
+      "title": {
+        "en": "Green",
+        "ru": "Зелёный"
+      },
+      "default": 0
+    },
+    {
+      "id": "blue",
+      "title": {
+        "en": "Blue",
+        "ru": "Синий"
+      },
+      "default": 0
+    }
+  ]
+}

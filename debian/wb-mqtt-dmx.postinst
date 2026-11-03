@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+if [ "$1" = "configure" ]; then
+    # The confed form lists the decoder types found in the template directories, so it is
+    # generated here and again whenever templates change (wb-mqtt-dmx update-schema).
+    wb-mqtt-dmx update-schema || true
+fi
+
+exit 0

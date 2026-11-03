@@ -2,6 +2,8 @@
 
     wb-mqtt-dmx test-port /dev/ttyRS485-2 [--seconds 10] [--pattern blink|full|ramp] [--hz 40] [--slots 512]
         stream a test pattern on a serial port; no MQTT, no config — for a scope and a decoder
+    wb-mqtt-dmx update-schema [--templates DIR ...]
+        regenerate the confed form (/var/lib/wb-mqtt-confed/schemas/wb-mqtt-dmx.schema.json)
 
 The service itself (MQTT devices from a config) comes in the next stage.
 """
@@ -14,7 +16,9 @@ import signal
 import sys
 import threading
 import time
+from pathlib import Path
 
+from . import schema, templates
 from .dmx_port import DmxPort
 from .sender import FrameSender, Universe
 
@@ -65,6 +69,18 @@ def cmd_test_port(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_update_schema(args: argparse.Namespace) -> int:
+    dirs = [Path(d) for d in args.templates] if args.templates else None
+    try:
+        loaded = templates.load_templates(dirs)
+    except templates.TemplateError as e:
+        print(f"templates: {e}", file=sys.stderr)
+        return 6
+    changed = schema.write_schema(schema.build_schema(loaded), Path(args.schema))
+    print(f"{args.schema}: {len(loaded)} type(s): {', '.join(sorted(loaded))}" + ("" if changed else " (unchanged)"))
+    return 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="wb-mqtt-dmx", description="DMX512 output from a Wiren Board controller")
     parser.add_argument("--debug", action="store_true")
@@ -79,11 +95,17 @@ def main(argv: list[str]) -> int:
     p.add_argument("--mab-us", type=int, default=20)
     p.add_argument("--no-rts", action="store_true", help="leave direction control to the kernel/adapter")
     p.add_argument("--no-rt", action="store_true", help="do not request SCHED_FIFO for the frame loop")
+    u = sub.add_parser("update-schema", help="regenerate the confed form from the decoder templates")
+    u.add_argument("--templates", action="append", metavar="DIR",
+                   help="template directory (repeatable; default: the package and /etc directories)")
+    u.add_argument("--schema", default=str(schema.SCHEMA_PATH), help="where to write the schema")
     args = parser.parse_args(argv[1:])
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if args.command == "test-port":
         return cmd_test_port(args)
+    if args.command == "update-schema":
+        return cmd_update_schema(args)
     parser.print_help()
     return 2
 

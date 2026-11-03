@@ -1,0 +1,17 @@
+{
+  "type": "dimmer",
+  "title": {
+    "en": "Dimmer (1 ch)",
+    "ru": "Диммер (1 канал)"
+  },
+  "channels": [
+    {
+      "id": "dimmer",
+      "title": {
+        "en": "Dimmer",
+        "ru": "Диммер"
+      },
+      "default": 0
+    }
+  ]
+}

@@ -1,1 +1,3 @@
 bin/wb-mqtt-dmx /usr/bin
+wb-mqtt-dmx.conf /etc
+templates/*.json /usr/share/wb-mqtt-dmx/templates
