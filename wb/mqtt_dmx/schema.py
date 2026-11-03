@@ -21,6 +21,8 @@ TITLE = "DMX512 output"
 DESCRIPTION = ("DMX512 fixtures driven from the controller's own RS-485 ports or WBE2 RS-485 modules. Each port is "
                "one DMX line with its devices. A port must be disabled in the serial device driver settings first "
                "(Settings → Configuration files → Serial device driver), the same way as for wb-mqtt-mbgate.")
+ENABLED_DESCRIPTION = ("Send DMX on this port. Keep it off until the port is disabled in the serial device driver "
+                       "settings, otherwise both drivers write to the same line.")
 PORT_DESCRIPTION = "/dev/ttyRS485-1, /dev/ttyRS485-2 or a WBE2 module port such as /dev/ttyMOD1."
 REFRESH_DESCRIPTION = "Frames per second on the line. 40 is the maximum for 512 channels; LED decoders are fine with 25–40."
 ON_START_DESCRIPTION = "What the line shows after the service starts (reboot, config save)."
@@ -42,6 +44,9 @@ RU = {
                  "устройств (Настройки → Конфигурационные файлы → Настройка драйвера serial-устройств), как для "
                  "wb-mqtt-mbgate.",
     "Ports": "Порты", "Port": "Порт", "Port settings": "Настройки порта", "Device": "Прибор", "Name": "Название",
+    "Enabled": "Включён",
+    ENABLED_DESCRIPTION: "Выдавать DMX на этом порту. Не включайте, пока порт не отключён в настройках драйвера "
+                         "serial-устройств, иначе оба драйвера пишут в одну линию.",
     "Serial port": "Порт", "Frame rate, Hz": "Частота кадров, Гц", "On start": "При старте",
     "On stop": "При остановке", "Restore last values": "Восстановить последние значения",
     "All channels 0": "Все каналы в 0", "Scene": "Сцена", "Hold last frame": "Оставить как есть",
@@ -109,6 +114,8 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "headerTemplate": "{{self.path}} · {{self.refresh_hz}} Hz · {{self.on_start}} / {{self.on_stop}}",
         "options": {"collapsed": True, "disable_edit_json": True, "disable_properties": True},
         "properties": {
+            "enabled": {"type": "boolean", "title": "Enabled", "default": False, "_format": "checkbox",
+                        "propertyOrder": 0, "description": ENABLED_DESCRIPTION, "options": {"grid_columns": 12}},
             "path": {"type": "string", "title": "Serial port", "minLength": 1, "default": "/dev/ttyRS485-2",
                      "propertyOrder": 1, "description": PORT_DESCRIPTION, "options": {"grid_columns": 6}},
             "name": {"type": "string", "title": "Name", "default": "DMX 1", "propertyOrder": 2,
@@ -141,7 +148,9 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             },
         },
         "required": ["settings", "devices"],
-        "options": {"disable_edit_json": True, "disable_properties": True, "disable_collapse": True},
+        # The tab already names the port; homeui's wb.disable_title drops the repeated heading in the panel.
+        "options": {"disable_edit_json": True, "disable_properties": True, "disable_collapse": True,
+                    "wb": {"disable_title": True}},
     }
 
 
