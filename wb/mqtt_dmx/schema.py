@@ -125,6 +125,8 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "devices": {
                 "type": "array", "title": "Devices", "propertyOrder": 2, "_format": "table",
                 "description": DEVICES_DESCRIPTION,
+                # The form rejects fully identical rows; the service rejects repeated names on load.
+                "uniqueItems": True,
                 "items": device_schema(templates),
                 "options": {"disable_array_reorder": True, "disable_collapse": True,
                             "disable_array_delete_last_row": True, "disable_array_delete_all_rows": True},
