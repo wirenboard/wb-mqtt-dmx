@@ -35,7 +35,7 @@ def pattern_frame(pattern: str, slots: int, second: int) -> bytes:
 def cmd_test_port(args: argparse.Namespace) -> int:
     universe = Universe(args.slots)
     port = DmxPort(args.port, break_us=args.break_us, mab_us=args.mab_us, de_via_rts=not args.no_rts)
-    sender = FrameSender(universe, port, args.hz)
+    sender = FrameSender(universe, port, args.hz, realtime=not args.no_rt)
     universe.write(1, pattern_frame(args.pattern, args.slots, 0))
     frames = int(args.seconds * sender.refresh_hz)
     print(f"{args.port}: {args.pattern}, {args.slots} slots, {sender.refresh_hz} Hz, {frames} frames, "
@@ -60,7 +60,8 @@ def cmd_test_port(args: argparse.Namespace) -> int:
         print(f"error: {sender.error}", file=sys.stderr)
         return 1
     print(f"sent {sender.frames} frames in {elapsed:.2f} s ({sender.frames / elapsed:.1f} fps), "
-          f"{sender.late_frames} late, {port.drain_fallbacks} tcdrain fallbacks")
+          f"{sender.late_frames} late, worst start lateness {sender.max_late_us:.0f} us, "
+          f"{port.drain_fallbacks} tcdrain fallbacks")
     return 0
 
 
@@ -77,6 +78,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--break-us", type=int, default=176)
     p.add_argument("--mab-us", type=int, default=20)
     p.add_argument("--no-rts", action="store_true", help="leave direction control to the kernel/adapter")
+    p.add_argument("--no-rt", action="store_true", help="do not request SCHED_FIFO for the frame loop")
     args = parser.parse_args(argv[1:])
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")

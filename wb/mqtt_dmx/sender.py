@@ -8,6 +8,7 @@ closed and reopened every RETRY_S while the grid keeps running.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from typing import Callable, Optional
@@ -19,6 +20,30 @@ LOG = logging.getLogger("wb-mqtt-dmx")
 UNIVERSE_SIZE = 512
 MAX_REFRESH_HZ = 44        # 513 bytes × 44 µs + BREAK + MAB ≈ 22.8 ms: the DMX maximum for 512 slots
 RETRY_S = 5.0
+RT_PRIORITY = 10           # SCHED_FIFO priority of the frame thread; modest, below kernel threads
+MCL_CURRENT, MCL_FUTURE = 1, 2
+
+
+def try_realtime(priority: int = RT_PRIORITY) -> str:
+    """Give the calling thread SCHED_FIFO and lock memory; returns what happened for the log.
+
+    Only the frame thread is affected (sched_setscheduler with pid 0 acts on the calling thread
+    on Linux). Needs root or CAP_SYS_NICE; on failure the thread simply stays on CFS.
+    """
+    if not hasattr(os, "sched_setscheduler"):
+        return "no sched_setscheduler on this platform"
+    try:
+        os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(priority))
+    except OSError as e:
+        return f"SCHED_FIFO refused: {e.strerror or e}"
+    try:
+        import ctypes  # pylint: disable=import-outside-toplevel
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.mlockall(MCL_CURRENT | MCL_FUTURE) != 0:
+            return f"SCHED_FIFO {priority}, mlockall failed: errno {ctypes.get_errno()}"
+    except (OSError, AttributeError) as e:
+        return f"SCHED_FIFO {priority}, mlockall unavailable: {e}"
+    return f"SCHED_FIFO {priority} + mlockall"
 
 
 class Universe:
@@ -52,7 +77,8 @@ class Universe:
 class FrameSender:
     def __init__(self, universe: Universe, port: DmxPort, refresh_hz: int = 40,
                  on_state: Optional[Callable[["FrameSender"], None]] = None,
-                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep) -> None:
+                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep,
+                 realtime: bool = True) -> None:
         self.universe = universe
         self.port = port
         self.refresh_hz = max(1, min(MAX_REFRESH_HZ, int(refresh_hz)))
@@ -60,10 +86,12 @@ class FrameSender:
         self.on_state = on_state
         self.clock = clock
         self.sleep = sleep
+        self.realtime = realtime
         self.running = False
         self.error = ""
         self.frames = 0
         self.late_frames = 0
+        self.max_late_us = 0.0     # worst lateness of a frame start against the grid
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -86,6 +114,8 @@ class FrameSender:
 
     def run(self, max_frames: Optional[int] = None) -> None:
         """Stream until stop() (or max_frames, for test-port and tests)."""
+        if self.realtime:
+            LOG.info("%s: scheduling: %s", self.port.path, try_realtime())
         next_retry = 0.0
         next_frame = self.clock()
         while not self._stop.is_set() and (max_frames is None or self.frames < max_frames):
@@ -93,8 +123,11 @@ class FrameSender:
             if now < next_frame:
                 self.sleep(next_frame - now)
                 now = self.clock()
-            elif self.running and now - next_frame > self.period / 2:
-                self.late_frames += 1
+            if self.running:
+                late = now - next_frame
+                self.max_late_us = max(self.max_late_us, late * 1e6)
+                if late > self.period / 2:
+                    self.late_frames += 1
             next_frame += self.period
             if now - next_frame > self.period:          # far behind (suspend, retry): restart the grid
                 next_frame = now + self.period

@@ -116,13 +116,14 @@ def test_sender_streams_the_universe_and_reports_errors():
     universe.write(511, bytes([1, 2, 3, 4]))             # past 512 is dropped, no error
     assert universe.get(512) == 2
     clock = ops.monotonic
-    sender = FrameSender(universe, port, refresh_hz=40, clock=clock, sleep=ops.sleep)
+    sender = FrameSender(universe, port, refresh_hz=40, clock=clock, sleep=ops.sleep, realtime=False)
     sender.run(max_frames=3)
     writes = [c for c in ops.calls if c[0] == "write"]
     assert writes == [("write", b"\x00\x00\x0a\x14\x00")] * 3
     assert sender.frames == 3 and sender.late_frames == 0 and not sender.running
 
-    failing = FrameSender(Universe(), dp.DmxPort("/dev/nope", ops=FakeOps(fail_open=True)), clock=clock)
+    failing = FrameSender(Universe(), dp.DmxPort("/dev/nope", ops=FakeOps(fail_open=True)), clock=clock,
+                          realtime=False)
     failing.sleep = lambda _s: failing.stop()           # the first idle sleep after the failure ends the loop
     failing.run()
     assert failing.frames == 0 and "No such file" in failing.error and not failing.running
