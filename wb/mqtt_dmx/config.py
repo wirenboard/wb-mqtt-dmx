@@ -75,14 +75,13 @@ class Port:
     break_us: int
     mab_us: int
     de_via_rts: bool
-    raw_channels: int
     devices: list[Device] = field(default_factory=list)
     groups: list[Group] = field(default_factory=list)
 
     @property
-    def raw_device_id(self) -> str:
-        """dmx_rs485_2 for /dev/ttyRS485-2, dmx_mod1 for /dev/ttyMOD1."""
-        return DEVICE_PREFIX + id_from_name(self.path.rsplit("/", 1)[-1].removeprefix("tty"), "port")
+    def key(self) -> str:
+        """rs485_2 for /dev/ttyRS485-2, mod1 for /dev/ttyMOD1: the port's control id prefix."""
+        return id_from_name(self.path.rsplit("/", 1)[-1].removeprefix("tty"), "port")
 
 
 def _int(entry: dict[str, Any], key: str, default: int, low: int, high: int, where: str) -> int:
@@ -121,7 +120,7 @@ def _port(entry: dict[str, Any], n: int) -> Port:
         refresh_hz=_int(settings, "refresh_hz", 40, 1, 44, where), on_start=on_start, on_stop=on_stop,
         slots=_int(adv, "slots", UNIVERSE_SIZE, 24, UNIVERSE_SIZE, where),
         break_us=_int(adv, "break_us", 176, 88, 1000, where), mab_us=_int(adv, "mab_us", 20, 8, 1000, where),
-        de_via_rts=de == "rts", raw_channels=_int(adv, "raw_channels", 0, 0, UNIVERSE_SIZE, where),
+        de_via_rts=de == "rts",
     )
 
 
@@ -139,7 +138,6 @@ def load_config(config: dict[str, Any], templates: dict[str, Template]) -> list[
         port = _port(entry, n)
         if any(p.path == port.path for p in ports):
             raise ConfigError(f"port {port.path} is listed twice")
-        taken_ids.add(port.raw_device_id[len(DEVICE_PREFIX):])
         next_address = 1
         for k, dev in enumerate(entry.get("devices") or [], start=1):
             if not isinstance(dev, dict):

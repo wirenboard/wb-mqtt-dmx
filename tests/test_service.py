@@ -36,7 +36,7 @@ class FakeClient:
 def make(cfg, tmp_path, enabled=True):
     cfg = {"ports": [{"settings": {"enabled": enabled, "path": "/dev/ttyRS485-2", "name": "Фасад", "refresh_hz": 40,
                                    "on_start": "restore", "on_stop": "hold",
-                                   "advanced": {"slots": 512, "raw_channels": 4}},
+                                   "advanced": {"slots": 512}},
                       "devices": cfg}]}
     ports = load_config(cfg, TEMPLATES)
     svc = DmxService(ports, client_factory=FakeClient, serial_conf=tmp_path / "serial.conf",
@@ -45,16 +45,21 @@ def make(cfg, tmp_path, enabled=True):
     return svc, svc._client.topics
 
 
-def test_devices_groups_and_raw_channels_are_published(tmp_path):
+def test_devices_and_groups_are_published(tmp_path):
     svc, t = make([{"name": "Пролёт", "type": "rgbw", "count": 2}, {"name": "Логотип", "type": "dimmer"}], tmp_path)
     assert json.loads(t[f"/devices/{SERVICE_DEVICE}/meta"])["driver"] == "wb-mqtt-dmx"
     assert t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2_map"] == "Пролёт: 1-8 (2 × 4); Логотип: 9"
     assert t["/devices/dmx_prolet/meta"] and t["/devices/dmx_prolet1/meta"] and t["/devices/dmx_logotip/meta"]
     assert json.loads(t["/devices/dmx_prolet1/controls/red/meta"])["title"] == {"en": "Red", "ru": "Красный"}
-    assert t["/devices/dmx_prolet2/controls/dmx"] == "RGBW (4 ch) · DMX 5–8"
-    assert json.loads(t["/devices/dmx_rs485_2/meta"])["title"]["ru"] == "Фасад: каналы"
-    assert t["/devices/dmx_rs485_2/controls/ch4"] == "0" and "/devices/dmx_rs485_2/controls/ch5" not in t
-    assert t[f"/devices/{SERVICE_DEVICE}/controls/status"] == "ok"
+    assert t["/devices/dmx_prolet2/controls/dmx"] == "DMX 5–8"
+    assert json.loads(t["/devices/dmx_prolet2/controls/dmx/meta"])["title"]["ru"] == "RGBW (4 канала)"
+    assert t["/devices/dmx_logotip/controls/dmx"] == "DMX 9"
+    assert t[f"/devices/{SERVICE_DEVICE}/controls/status"] == "0"
+    state = json.loads(t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2_state/meta"])
+    assert state["enum"]["2"] == {"en": "Running", "ru": "Работает"}
+    assert t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2_state"] == "1"       # starting: no frame thread in tests
+    assert t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2_error"] == ""
+    assert "/devices/dmx_rs485_2/meta" not in t
 
 
 def test_writes_land_in_the_frame_buffer_and_groups_fan_out(tmp_path):
@@ -67,8 +72,7 @@ def test_writes_land_in_the_frame_buffer_and_groups_fan_out(tmp_path):
     assert universe.snapshot()[0] == 17 and universe.snapshot()[4] == 17
     assert t["/devices/dmx_prolet1/controls/red"] == "17"
     assert svc.handle_write("dmx_logotip", "dimmer", "999") and universe.get(9) == 255   # clamped
-    assert svc.handle_write("dmx_rs485_2", "ch3", "7") and universe.get(3) == 7
-    assert not svc.handle_write("dmx_rs485_2", "ch5", "7")           # beyond raw_channels
+    assert not svc.handle_write("dmx_nope", "dimmer", "1")
     assert not svc.handle_write("dmx_logotip", "nope", "1")
     assert not svc.handle_write("dmx_logotip", "dimmer", "abc")
     assert svc.handle_write(SERVICE_DEVICE, "blackout", "1")
@@ -87,8 +91,8 @@ def test_state_is_saved_and_restored(tmp_path):
 
 def test_disabled_port_shows_in_status_without_devices(tmp_path):
     svc, t = make([{"name": "Логотип", "type": "dimmer"}], tmp_path, enabled=False)
-    assert t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2"] == "disabled"
-    assert "no port enabled" in t[f"/devices/{SERVICE_DEVICE}/controls/status"]
+    assert t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2_state"] == "0"
+    assert t[f"/devices/{SERVICE_DEVICE}/controls/status"] == "2"
     assert "/devices/dmx_logotip/meta" not in t
 
 

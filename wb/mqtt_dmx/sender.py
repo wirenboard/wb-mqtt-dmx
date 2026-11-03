@@ -21,6 +21,7 @@ UNIVERSE_SIZE = 512
 MAX_REFRESH_HZ = 44        # 513 bytes × 44 µs + BREAK + MAB ≈ 22.8 ms: the DMX maximum for 512 slots
 RETRY_S = 5.0
 RT_PRIORITY = 10           # SCHED_FIFO priority of the frame thread; modest, below kernel threads
+STATS_WINDOW_S = 2.0
 STALL_LOG_S = 0.010        # a frame starting this late against the grid is logged
 MCL_CURRENT, MCL_FUTURE = 1, 2
 
@@ -93,6 +94,7 @@ class FrameSender:
         self.frames = 0
         self.late_frames = 0
         self.max_late_us = 0.0     # worst lateness of a frame start against the grid
+        self.measured_fps = 0.0    # frames per second over the last STATS_WINDOW_S
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -120,6 +122,7 @@ class FrameSender:
         next_retry = 0.0
         last_send_ms = 0.0
         next_frame = self.clock()
+        window_start, window_frames = next_frame, 0
         while not self._stop.is_set() and (max_frames is None or self.frames < max_frames):
             now = self.clock()
             if now < next_frame:
@@ -151,6 +154,10 @@ class FrameSender:
                 self.port.send_frame(self.universe.snapshot())
                 last_send_ms = (self.clock() - t_send) * 1e3
                 self.frames += 1
+                window_frames += 1
+                if now - window_start >= STATS_WINDOW_S:
+                    self.measured_fps = window_frames / (now - window_start)
+                    window_start, window_frames = now, 0
             except DmxPortError as e:
                 self.port.close()
                 next_retry = now + RETRY_S

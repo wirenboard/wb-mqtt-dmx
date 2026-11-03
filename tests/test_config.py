@@ -12,7 +12,7 @@ TEMPLATES = templates.load_templates([ROOT / "templates"])
 
 def port(path="/dev/ttyRS485-2", devices=(), **settings):
     base = {"enabled": True, "path": path, "name": "DMX", "refresh_hz": 40, "on_start": "restore", "on_stop": "hold",
-            "advanced": {"slots": 512, "break_us": 176, "mab_us": 20, "de_control": "rts", "raw_channels": 0}}
+            "advanced": {"slots": 512, "break_us": 176, "mab_us": 20, "de_control": "rts"}}
     base.update(settings)
     return {"settings": base, "devices": list(devices)}
 
@@ -24,8 +24,8 @@ def dev(name, type_="rgbw", **kw):
 def test_shipped_config_loads_with_two_disabled_ports():
     cfg = json.loads((ROOT / "wb-mqtt-dmx.conf").read_text(encoding="utf-8"))
     ports = load_config(cfg, TEMPLATES)
-    assert [(p.path, p.enabled, p.raw_device_id) for p in ports] == [
-        ("/dev/ttyRS485-1", False, "dmx_rs485_1"), ("/dev/ttyRS485-2", False, "dmx_rs485_2")]
+    assert [(p.path, p.enabled, p.key) for p in ports] == [
+        ("/dev/ttyRS485-1", False, "rs485_1"), ("/dev/ttyRS485-2", False, "rs485_2")]
 
 
 def test_ids_come_from_names_and_addresses_follow_each_other():

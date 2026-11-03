@@ -28,8 +28,6 @@ REFRESH_DESCRIPTION = "Frames per second on the line. 40 is the maximum for 512 
 ON_START_DESCRIPTION = "What the line shows after the service starts (reboot, config save)."
 ON_STOP_DESCRIPTION = ("What happens when the service stops. Hold: frames just stop and the decoders keep their last "
                        "values until their own timeout. Blackout: all channels are set to 0 first.")
-RAW_DESCRIPTION = ("Expose the first N channels of the line as a device dmx_<port> with sliders ch1…chN "
-                   "(dmx_rs485_2 for /dev/ttyRS485-2), for devices without a template and for wb-rules. 0: no such device.")
 DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
 DEVICES_DESCRIPTION = ("Address 0 places the device right after the previous one. Count above 1 gives N identical "
@@ -51,7 +49,7 @@ RU = {
     "All channels 0": "Все каналы в 0", "Hold last frame": "Оставить как есть",
     "Blackout": "Погасить всё", "Advanced": "Дополнительно", "Channels per frame": "Каналов в кадре",
     "BREAK, µs": "BREAK, мкс", "MAB, µs": "MAB, мкс", "Transmitter enable": "Включение передатчика",
-    "RTS": "RTS", "Kernel": "Ядро", "Raw channels as a device": "Сырые каналы как устройство",
+    "RTS": "RTS", "Kernel": "Ядро",
     "Devices": "Приборы", "Device id": "Идентификатор", "Type": "Тип", "Start address": "Стартовый адрес",
     "Count": "Количество",
     PORT_DESCRIPTION: "/dev/ttyRS485-1, /dev/ttyRS485-2 или порт модуля WBE2, например /dev/ttyMOD1.",
@@ -60,8 +58,6 @@ RU = {
     ON_START_DESCRIPTION: "Что на линии после запуска сервиса (перезагрузка, сохранение настроек).",
     ON_STOP_DESCRIPTION: "Что происходит при остановке сервиса. Оставить: кадры просто прекращаются, декодеры держат "
                          "последние значения до своего таймаута. Погасить: сначала все каналы ставятся в 0.",
-    RAW_DESCRIPTION: "Опубликовать первые N каналов линии как устройство dmx_<порт> с ползунками ch1…chN "
-                     "(dmx_rs485_2 для /dev/ttyRS485-2) — для приборов без шаблона и для wb-rules. 0 — устройства нет.",
     DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
                     "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
     DEVICES_DESCRIPTION: "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт N одинаковых приборов "
@@ -87,8 +83,6 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "de_control": {"type": "string", "title": "Transmitter enable", "enum": ["rts", "none"],
                            "default": "rts", "propertyOrder": 4, "description": DE_DESCRIPTION,
                            "options": {"enum_titles": ["RTS", "Kernel"], "grid_columns": 6}},
-            "raw_channels": _int("Raw channels as a device", 0, UNIVERSE_SIZE, 0, 5, description=RAW_DESCRIPTION,
-                                 options={"grid_columns": 6}),
         },
     }
     settings = {
