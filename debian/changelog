@@ -1,0 +1,5 @@
+wb-mqtt-dmx (0.1.0) stable; urgency=medium
+
+  * Prototype: DMX512 frames on a serial port, test-port command.
+
+ -- Wiren Board team <info@wirenboard.com>  Tue, 03 Nov 2026 22:00:00 +0300
