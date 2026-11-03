@@ -74,6 +74,7 @@ def test_open_sets_250000_8n2_disables_auto_rs485_and_holds_rts():
     # close: RTS released, original rs485 config restored, fd closed
     assert ("ioctl", dp.TIOCMBIC, struct.pack("i", dp.TIOCM_RTS)) in ops.calls
     assert struct.unpack("I", ops.rs485[:4])[0] & dp.SER_RS485_ENABLED
+    assert ops.rs485[12:] == bytes(20)                   # padding zeroed, the kernel rejects junk there
     assert ops.calls[-1] == ("close",)
 
 

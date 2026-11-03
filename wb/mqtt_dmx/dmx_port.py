@@ -19,10 +19,13 @@ imports on Windows too; the Linux calls go through `PortOps`, which tests replac
 
 from __future__ import annotations
 
+import logging
 import os
 import struct
 import time
 from typing import Optional
+
+LOG = logging.getLogger("wb-mqtt-dmx")
 
 try:  # Linux only
     import fcntl
@@ -141,17 +144,19 @@ class DmxPort:
             except (OSError, DmxPortError):
                 pass
         if self._saved_rs485 is not None:
+            # Only flags and the two delays are restored; the kernel may reject non-zero padding.
+            restore = self._saved_rs485[:12] + bytes(RS485_STRUCT_SIZE - 12)
             try:
-                self.ops.ioctl(fd, TIOCSRS485, self._saved_rs485)
-            except (OSError, DmxPortError):
-                pass
+                self.ops.ioctl(fd, TIOCSRS485, restore)
+            except (OSError, DmxPortError) as e:
+                LOG.warning("%s: cannot restore the RS-485 mode: %s", self.path, e)
             self._saved_rs485 = None
         if self._saved_termios is not None:
             # Leave the line as we found it (speed, framing), the way wb-mqtt-serial does.
             try:
                 self.ops.ioctl(fd, TCSETS2, self._saved_termios)
-            except (OSError, DmxPortError):
-                pass
+            except (OSError, DmxPortError) as e:
+                LOG.warning("%s: cannot restore the line settings: %s", self.path, e)
             self._saved_termios = None
         self.ops.close(fd)
 
