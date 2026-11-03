@@ -59,8 +59,9 @@ def test_schema_lists_template_types_with_titles_and_translations():
     assert dev["options"]["enum_titles"][dev["enum"].index("rgbw")] == "RGBW (4 ch)"
     assert s["translations"]["ru"]["RGBW (4 ch)"] == "RGBW (4 канала)"
     assert s["configFile"] == {"path": "/etc/wb-mqtt-dmx.conf", "service": "wb-mqtt-dmx"}
-    adv = port["properties"]["advanced"]
+    adv = port["properties"]["settings"]["properties"]["advanced"]
     assert port["title"] == "Port" and s["translations"]["ru"]["Ports"] == "Порты"
+    assert s["properties"]["ports"]["_format"] == "tabs-top" and port["properties"]["devices"]["_format"] == "table"
     assert adv["options"]["collapsed"] is True and "start_scene" in adv["properties"]
 
 

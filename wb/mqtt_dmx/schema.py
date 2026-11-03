@@ -41,7 +41,7 @@ RU = {
                  "линия DMX со своими приборами. Порт нужно сначала отключить в настройках драйвера последовательных "
                  "устройств (Настройки → Конфигурационные файлы → Настройка драйвера serial-устройств), как для "
                  "wb-mqtt-mbgate.",
-    "Ports": "Порты", "Port": "Порт", "Device": "Прибор", "Name": "Название",
+    "Ports": "Порты", "Port": "Порт", "Port settings": "Настройки порта", "Device": "Прибор", "Name": "Название",
     "Serial port": "Порт", "Frame rate, Hz": "Частота кадров, Гц", "On start": "При старте",
     "On stop": "При остановке", "Restore last values": "Восстановить последние значения",
     "All channels 0": "Все каналы в 0", "Scene": "Сцена", "Hold last frame": "Оставить как есть",
@@ -88,7 +88,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "raw_channels": _int("Raw channels as a device", 0, UNIVERSE_SIZE, 0, 5, description=RAW_DESCRIPTION,
                                  options={"grid_columns": 6}),
             "start_scene": {
-                "type": "array", "title": "Start scene", "propertyOrder": 6, "format": "table",
+                "type": "array", "title": "Start scene", "propertyOrder": 6, "_format": "table",
                 "description": START_SCENE_DESCRIPTION,
                 "items": {
                     "type": "object",
@@ -103,35 +103,44 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             },
         },
     }
-    return {
-        "type": "object",
-        "title": "Port",
-        "_format": "grid",
-        "headerTemplate": "{{self.name}} ({{self.path}})",
+    settings = {
+        "type": "object", "title": "Port settings", "propertyOrder": 1, "_format": "grid",
+        # Collapsed once the port is set up; the header keeps the essentials visible.
+        "headerTemplate": "{{self.path}} · {{self.refresh_hz}} Hz · {{self.on_start}} / {{self.on_stop}}",
+        "options": {"collapsed": True, "disable_edit_json": True, "disable_properties": True},
         "properties": {
             "path": {"type": "string", "title": "Serial port", "minLength": 1, "default": "/dev/ttyRS485-2",
                      "propertyOrder": 1, "description": PORT_DESCRIPTION, "options": {"grid_columns": 6}},
             "name": {"type": "string", "title": "Name", "default": "DMX 1", "propertyOrder": 2,
                      "options": {"grid_columns": 6}},
-            "refresh_hz": _int("Frame rate, Hz", 1, 44, 40, 4, description=REFRESH_DESCRIPTION,
+            "refresh_hz": _int("Frame rate, Hz", 1, 44, 40, 3, description=REFRESH_DESCRIPTION,
                                options={"grid_columns": 4}),
             "on_start": {"type": "string", "title": "On start", "enum": ["restore", "zero", "scene"],
-                         "default": "restore", "propertyOrder": 5, "description": ON_START_DESCRIPTION,
+                         "default": "restore", "propertyOrder": 4, "description": ON_START_DESCRIPTION,
                          "options": {"enum_titles": ["Restore last values", "All channels 0", "Scene"],
                                      "grid_columns": 4}},
             "on_stop": {"type": "string", "title": "On stop", "enum": ["hold", "blackout"], "default": "hold",
-                        "propertyOrder": 6, "description": ON_STOP_DESCRIPTION,
+                        "propertyOrder": 5, "description": ON_STOP_DESCRIPTION,
                         "options": {"enum_titles": ["Hold last frame", "Blackout"], "grid_columns": 4}},
             "advanced": advanced,
+        },
+        "required": ["path"],
+    }
+    return {
+        "type": "object",
+        "title": "Port",
+        "headerTemplate": "{{self.settings.name}} ({{self.settings.path}})",
+        "properties": {
+            "settings": settings,
             "devices": {
-                "type": "array", "title": "Devices", "propertyOrder": 200, "_format": "tabs",
+                "type": "array", "title": "Devices", "propertyOrder": 2, "_format": "table",
                 "items": device_schema(templates),
                 "options": {"disable_array_reorder": True, "disable_collapse": True,
-                            "disable_array_delete_last_row": True},
+                            "disable_array_delete_last_row": True, "disable_array_delete_all_rows": True},
             },
         },
-        "required": ["path", "devices"],
-        "options": {"disable_edit_json": True, "disable_properties": True},
+        "required": ["settings", "devices"],
+        "options": {"disable_edit_json": True, "disable_properties": True, "disable_collapse": True},
     }
 
 
@@ -150,8 +159,6 @@ def device_schema(templates: dict[str, Template]) -> dict[str, Any]:
     return {
         "type": "object",
         "title": "Device",
-        "_format": "grid",
-        "headerTemplate": "{{self.id}} · {{self.type}} × {{self.count}}",
         "properties": {
             "id": {"type": "string", "title": "Device id", "pattern": "^[a-z0-9_]{1,32}$", "propertyOrder": 1,
                    "description": ID_DESCRIPTION, "options": {"grid_columns": 4}},
@@ -180,7 +187,7 @@ def build_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "options": {"disable_edit_json": True, "disable_properties": True, "disable_collapse": True},
         "properties": {
             "ports": {
-                "type": "array", "title": "Ports", "propertyOrder": 1, "minItems": 1, "_format": "tabs",
+                "type": "array", "title": "Ports", "propertyOrder": 1, "minItems": 1, "_format": "tabs-top",
                 "items": port_schema(templates),
                 "options": {"disable_array_reorder": True, "disable_collapse": True,
                             "disable_array_delete_last_row": True},
