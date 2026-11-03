@@ -35,6 +35,10 @@ PYTHONPATH=. python3 bin/wb-mqtt-dmx test-port /dev/ttyRS485-2 --pattern blink -
 `tcdrain`. Что смотреть осциллографом на A/B: BREAK ≥ 88 мкс, MAB ≥ 8 мкс, период кадра, что линия
 не «плавает» между кадрами (DE удерживается).
 
+Результаты на WB 8.5 — в [docs/hardware_results.md](docs/hardware_results.md). Для Rigol DHO804 по
+сети есть `scripts/dmx_measure.py` (BREAK, MAB, период, ошибки стоп-битов; CH1 на линии A, щуп 10:1)
+и `scripts/scope.py` (скриншоты и SCPI-запросы), адрес прибора в переменной `SCOPE_HOST`.
+
 ## Разработка
 
 ```bash
