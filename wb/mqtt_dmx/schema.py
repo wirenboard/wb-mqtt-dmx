@@ -32,8 +32,8 @@ START_SCENE_DESCRIPTION = "Channel values applied at start when 'Scene' is selec
 DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
 DEVICES_DESCRIPTION = ("Id without the dmx_ prefix (facade → dmx_facade; latin letters, digits, underscore). Address 0 "
-                       "places the device right after the previous one. Count above 1 gives <id>1…<id>N on consecutive "
-                       "addresses plus a group device <id> for all of them.")
+                       "places the device right after the previous one. Count above 1 gives id1…idN on consecutive "
+                       "addresses plus a group device id for all of them.")
 
 RU = {
     TITLE: "Выход DMX512",
@@ -63,8 +63,8 @@ RU = {
     DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
                     "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
     DEVICES_DESCRIPTION: "Идентификатор без префикса dmx_ (facade → dmx_facade; латинские буквы, цифры, подчёркивание). "
-                         "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт <id>1…<id>N на адресах "
-                         "подряд плюс групповое устройство <id> для всех сразу.",
+                         "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт id1…idN на адресах "
+                         "подряд плюс групповое устройство id для всех сразу.",
     "Id": "Идентификатор", "Address": "Адрес",
 }
 
