@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 import sys
 import threading
 import time
@@ -49,6 +50,9 @@ def cmd_test_port(args: argparse.Namespace) -> int:
 
     if args.pattern == "blink":
         threading.Thread(target=blinker, daemon=True).start()
+    # SIGTERM/SIGINT end the run cleanly so the port gets its RS-485 mode and line settings back.
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda _s, _f: sender.stop(timeout=0))
     started = time.monotonic()
     sender.run(max_frames=frames)
     elapsed = time.monotonic() - started
