@@ -51,6 +51,10 @@ class FakeOps(dp.PortOps):
         self.calls.append(("sleep", seconds))
         self.t += seconds
 
+    def spin_us(self, micros):
+        self.calls.append(("spin_us", micros))
+        self.t += micros / 1e6
+
     def monotonic(self):
         return self.t
 
@@ -85,7 +89,7 @@ def test_frame_is_break_mab_start_code_slots():
     ops.calls.clear()
     port.send_frame(bytes([1, 2, 3]))
     assert ops.calls == [
-        ("ioctl", dp.TIOCSBRK, b""), ("sleep", 176e-6), ("ioctl", dp.TIOCCBRK, b""), ("sleep", 20e-6),
+        ("ioctl", dp.TIOCSBRK, b""), ("spin_us", 176), ("ioctl", dp.TIOCCBRK, b""), ("spin_us", 20),
         ("write", b"\x00\x01\x02\x03"),
     ]
     ops.calls.clear()

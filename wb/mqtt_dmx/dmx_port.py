@@ -4,8 +4,8 @@ One DMX frame is: BREAK (line low ≥ 88 µs) → MAB (line high ≥ 8 µs) → 
 512 slots, every byte at 250 kbit/s, 8 data bits, no parity, 2 stop bits. The kernel gives all of it:
 
 * 250000 baud is not a POSIX constant → `TCSETS2` with the `BOTHER` flag;
-* BREAK → `TIOCSBRK` … sleep … `TIOCCBRK` (Python sleeps a bit longer than asked, which only
-  lengthens the BREAK and the MAB; the standard has no upper limit that matters here);
+* BREAK → `TIOCSBRK` … busy-wait … `TIOCCBRK` (`time.sleep` wakes up 120-150 µs late on the
+  controller, so the short BREAK and MAB intervals are spun on `perf_counter` instead);
 * the RS-485 transmitter enable (DE) must stay on for the whole frame, BREAK included. The kernel's
   automatic RS-485 direction control turns DE on only around the bytes it writes, not around a
   BREAK, so it is switched off (`TIOCSRS485`) and DE is held through the RTS line (`TIOCMBIS`).
@@ -95,6 +95,13 @@ class PortOps:
 
     def sleep(self, seconds: float) -> None:
         time.sleep(seconds)
+
+    def spin_us(self, micros: int) -> None:
+        """Busy-wait for a few hundred microseconds: time.sleep wakes up ~120-150 us late on the
+        controller, which stretched BREAK and MAB; spinning costs well under 1 % CPU at 40 Hz."""
+        end = time.perf_counter() + micros / 1e6
+        while time.perf_counter() < end:
+            pass
 
     def monotonic(self) -> float:
         return time.monotonic()
@@ -197,9 +204,9 @@ class DmxPort:
             if self.frames:
                 self._wait_transmitter_empty(fd)
             self.ops.ioctl(fd, TIOCSBRK)
-            self.ops.sleep(self.break_us / 1e6)
+            self.ops.spin_us(self.break_us)
             self.ops.ioctl(fd, TIOCCBRK)
-            self.ops.sleep(self.mab_us / 1e6)
+            self.ops.spin_us(self.mab_us)
             data = b"\x00" + bytes(slots)
             written = 0
             while written < len(data):
