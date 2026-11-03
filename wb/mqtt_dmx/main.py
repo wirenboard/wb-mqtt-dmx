@@ -4,13 +4,14 @@
         stream a test pattern on a serial port; no MQTT, no config — for a scope and a decoder
     wb-mqtt-dmx update-schema [--templates DIR ...]
         regenerate the confed form (/var/lib/wb-mqtt-confed/schemas/wb-mqtt-dmx.schema.json)
-
-The service itself (MQTT devices from a config) comes in the next stage.
+    wb-mqtt-dmx [-c /etc/wb-mqtt-dmx.conf] [--templates DIR ...] [--no-rt]
+        run the service (what the systemd unit does)
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import signal
 import sys
@@ -19,8 +20,12 @@ import time
 from pathlib import Path
 
 from . import schema, templates
+from .config import ConfigError, load_config
 from .dmx_port import DmxPort
 from .sender import FrameSender, Universe
+
+CONFIG_PATH = "/etc/wb-mqtt-dmx.conf"
+EXIT_CONFIG_ERROR = 6
 
 PATTERNS = ("blink", "full", "ramp")
 
@@ -81,9 +86,38 @@ def cmd_update_schema(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_service(args: argparse.Namespace) -> int:
+    # Imported here: wb_common (the MQTT client) exists only on a controller.
+    from .service import STATE_PATH, DmxService, publish_config_error  # pylint: disable=import-outside-toplevel
+
+    def config_error(text: str) -> int:
+        print(f"configuration: {text}", file=sys.stderr)
+        publish_config_error(text)
+        return EXIT_CONFIG_ERROR
+
+    try:
+        config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    except OSError as e:
+        return config_error(f"cannot read {args.config}: {e}")
+    except ValueError as e:
+        return config_error(f"{args.config} is not valid JSON: {e}")
+    dirs = [Path(d) for d in args.templates] if args.templates else None
+    try:
+        loaded = templates.load_templates(dirs)
+        ports = load_config(config, loaded)
+    except (templates.TemplateError, ConfigError, TypeError, AttributeError) as e:
+        return config_error(str(e))
+    return DmxService(ports, state_path=Path(args.state) if args.state else STATE_PATH,
+                      realtime=not args.no_rt).run()
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="wb-mqtt-dmx", description="DMX512 output from a Wiren Board controller")
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("-c", "--config", default=CONFIG_PATH, help="configuration file (run)")
+    parser.add_argument("--templates", action="append", metavar="DIR", help="template directory (repeatable)")
+    parser.add_argument("--state", help="where channel values are saved for 'restore' (run)")
+    parser.add_argument("--no-rt", action="store_true", help="do not request SCHED_FIFO for the frame loops")
     sub = parser.add_subparsers(dest="command")
     p = sub.add_parser("test-port", help="stream a test pattern on a serial port (no MQTT)")
     p.add_argument("port", help="serial port, e.g. /dev/ttyRS485-2")
@@ -94,10 +128,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--break-us", type=int, default=176)
     p.add_argument("--mab-us", type=int, default=20)
     p.add_argument("--no-rts", action="store_true", help="leave direction control to the kernel/adapter")
-    p.add_argument("--no-rt", action="store_true", help="do not request SCHED_FIFO for the frame loop")
     u = sub.add_parser("update-schema", help="regenerate the confed form from the decoder templates")
-    u.add_argument("--templates", action="append", metavar="DIR",
-                   help="template directory (repeatable; default: the package and /etc directories)")
     u.add_argument("--schema", default=str(schema.SCHEMA_PATH), help="where to write the schema")
     args = parser.parse_args(argv[1:])
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
@@ -106,8 +137,7 @@ def main(argv: list[str]) -> int:
         return cmd_test_port(args)
     if args.command == "update-schema":
         return cmd_update_schema(args)
-    parser.print_help()
-    return 2
+    return run_service(args)
 
 
 if __name__ == "__main__":
