@@ -31,9 +31,9 @@ RAW_DESCRIPTION = ("Expose the first N channels of the line as a device dmx_<por
 START_SCENE_DESCRIPTION = "Channel values applied at start when 'Scene' is selected above; other channels are 0."
 DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
-ADDRESS_DESCRIPTION = "First DMX channel of the device. 0 places it right after the previous device on this port."
-COUNT_DESCRIPTION = "Identical devices on consecutive addresses: ids <id>1…<id>N plus a group device <id> for all of them."
-ID_DESCRIPTION = "Without the dmx_ prefix: facade → dmx_facade. Latin letters, digits, underscore."
+DEVICES_DESCRIPTION = ("Id without the dmx_ prefix (facade → dmx_facade; latin letters, digits, underscore). Address 0 "
+                       "places the device right after the previous one. Count above 1 gives <id>1…<id>N on consecutive "
+                       "addresses plus a group device <id> for all of them.")
 
 RU = {
     TITLE: "Выход DMX512",
@@ -62,10 +62,10 @@ RU = {
     START_SCENE_DESCRIPTION: "Значения каналов при старте, если выше выбрана «Сцена»; остальные каналы — 0.",
     DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
                     "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
-    ADDRESS_DESCRIPTION: "Первый DMX-канал прибора. 0 — сразу после предыдущего прибора на этом порту.",
-    COUNT_DESCRIPTION: "Одинаковые приборы на адресах подряд: идентификаторы <id>1…<id>N плюс групповое устройство "
-                       "<id> для всех сразу.",
-    ID_DESCRIPTION: "Без префикса dmx_: facade → dmx_facade. Латинские буквы, цифры, подчёркивание.",
+    DEVICES_DESCRIPTION: "Идентификатор без префикса dmx_ (facade → dmx_facade; латинские буквы, цифры, подчёркивание). "
+                         "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт <id>1…<id>N на адресах "
+                         "подряд плюс групповое устройство <id> для всех сразу.",
+    "Id": "Идентификатор", "Address": "Адрес",
 }
 
 
@@ -134,6 +134,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "settings": settings,
             "devices": {
                 "type": "array", "title": "Devices", "propertyOrder": 2, "_format": "table",
+                "description": DEVICES_DESCRIPTION,
                 "items": device_schema(templates),
                 "options": {"disable_array_reorder": True, "disable_collapse": True,
                             "disable_array_delete_last_row": True, "disable_array_delete_all_rows": True},
@@ -160,14 +161,12 @@ def device_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "type": "object",
         "title": "Device",
         "properties": {
-            "id": {"type": "string", "title": "Device id", "pattern": "^[a-z0-9_]{1,32}$", "propertyOrder": 1,
-                   "description": ID_DESCRIPTION, "options": {"grid_columns": 4}},
-            "name": {"type": "string", "title": "Name", "propertyOrder": 2, "options": {"grid_columns": 4}},
+            "id": {"type": "string", "title": "Id", "pattern": "^[a-z0-9_]{1,32}$", "propertyOrder": 1},
+            "name": {"type": "string", "title": "Name", "propertyOrder": 2},
             "type": {"type": "string", "title": "Type", "enum": types or ["dimmer"], "default": types[0] if types else "dimmer",
-                     "propertyOrder": 3, "options": {"enum_titles": titles or ["Dimmer"], "grid_columns": 4}},
-            "address": _int("Start address", 0, UNIVERSE_SIZE, 0, 4, description=ADDRESS_DESCRIPTION,
-                            options={"grid_columns": 6}),
-            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 5, description=COUNT_DESCRIPTION, options={"grid_columns": 6}),
+                     "propertyOrder": 3, "options": {"enum_titles": titles or ["Dimmer"]}},
+            "address": _int("Address", 0, UNIVERSE_SIZE, 0, 4),
+            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 5),
         },
         "required": ["id", "type"],
         "options": {"disable_edit_json": True, "disable_properties": True},
