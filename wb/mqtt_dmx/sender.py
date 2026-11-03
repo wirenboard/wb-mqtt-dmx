@@ -21,6 +21,7 @@ UNIVERSE_SIZE = 512
 MAX_REFRESH_HZ = 44        # 513 bytes × 44 µs + BREAK + MAB ≈ 22.8 ms: the DMX maximum for 512 slots
 RETRY_S = 5.0
 RT_PRIORITY = 10           # SCHED_FIFO priority of the frame thread; modest, below kernel threads
+STALL_LOG_S = 0.010        # a frame starting this late against the grid is logged
 MCL_CURRENT, MCL_FUTURE = 1, 2
 
 
@@ -117,6 +118,7 @@ class FrameSender:
         if self.realtime:
             LOG.info("%s: scheduling: %s", self.port.path, try_realtime())
         next_retry = 0.0
+        last_send_ms = 0.0
         next_frame = self.clock()
         while not self._stop.is_set() and (max_frames is None or self.frames < max_frames):
             now = self.clock()
@@ -128,6 +130,9 @@ class FrameSender:
                 self.max_late_us = max(self.max_late_us, late * 1e6)
                 if late > self.period / 2:
                     self.late_frames += 1
+                if late > STALL_LOG_S:
+                    LOG.warning("%s: frame %d starts %.1f ms late (previous send took %.1f ms)",
+                                self.port.path, self.frames, late * 1e3, last_send_ms)
             next_frame += self.period
             if now - next_frame > self.period:          # far behind (suspend, retry): restart the grid
                 next_frame = now + self.period
@@ -142,7 +147,9 @@ class FrameSender:
                     continue
                 self._state(True)
             try:
+                t_send = self.clock()
                 self.port.send_frame(self.universe.snapshot())
+                last_send_ms = (self.clock() - t_send) * 1e3
                 self.frames += 1
             except DmxPortError as e:
                 self.port.close()
