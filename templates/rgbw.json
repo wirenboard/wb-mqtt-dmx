@@ -4,6 +4,11 @@
     "en": "RGBW (4 ch)",
     "ru": "RGBW (4 канала)"
   },
+  "rgb": [
+    "red",
+    "green",
+    "blue"
+  ],
   "channels": [
     {
       "id": "red",

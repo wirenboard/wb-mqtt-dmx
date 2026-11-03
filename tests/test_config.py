@@ -55,6 +55,14 @@ def test_repeated_names_are_rejected_across_ports():
         load_config(cfg, TEMPLATES)
 
 
+def test_channels_type_takes_its_count_from_the_entry():
+    cfg = {"ports": [port(devices=[dev("Дым", "channels", channels=3), dev("Строб", "channels"), dev("A", "rgbw")])]}
+    (p,) = load_config(cfg, TEMPLATES)
+    assert [(d.id, d.address, d.template.footprint) for d in p.devices] == [("dym", 1, 3), ("strob", 4, 1), ("a", 5, 4)]
+    assert [c.id for c in p.devices[0].template.channels] == ["ch1", "ch2", "ch3"]
+    assert p.devices[0].template.title["ru"] == "Каналы"
+
+
 def test_overlaps_overflow_and_unknown_type():
     with pytest.raises(ConfigError, match="overlap"):
         load_config({"ports": [port(devices=[dev("A", address=1), dev("B", address=3)])]}, TEMPLATES)

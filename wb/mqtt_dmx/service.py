@@ -25,6 +25,7 @@ from types import FrameType
 from typing import Any, Callable, Optional, Union
 
 from .config import Device, Group, Port, address_map
+from .controls import Control, build_controls, render
 from .dmx_port import DmxPort, DmxPortError
 from .sender import FrameSender, Universe
 
@@ -113,7 +114,8 @@ class PortRuntime:
         self.port = port
         self.universe = sender.universe
         self.sender = sender
-        self.values: dict[str, dict[str, int]] = {}     # device_id -> control id -> value
+        self.values: dict[str, dict[str, Any]] = {}     # device_id -> control id -> value
+        self.controls: dict[str, list[Control]] = {}    # device_id -> controls
 
 
 class DmxService:
@@ -137,7 +139,8 @@ class DmxService:
             self._runtimes[port.path] = rt
             for target in [*port.groups, *port.devices]:
                 self._by_device[target.device_id] = (rt, target)
-                rt.values[target.device_id] = {c.id: c.default for c in target.template.channels}
+                rt.controls[target.device_id] = build_controls(target.template)
+                rt.values[target.device_id] = {c.id: c.default for c in rt.controls[target.device_id]}
         self._restore_state()
         self._client = client_factory(DRIVER)
         self._client.on_connect = self._on_connect
@@ -200,15 +203,13 @@ class DmxService:
     def _pull_values_from_universe(self, rt: PortRuntime, target: Target) -> None:
         """Device values from the buffer (after a restore); a group shows its first member."""
         dev = target.members[0] if isinstance(target, Group) else target
-        for c in target.template.channels:
-            rt.values[target.device_id][c.id] = rt.universe.get(dev.address + c.offset)
+        read = {c.offset: rt.universe.get(dev.address + c.offset) for c in target.template.channels}
+        for control in rt.controls[target.device_id]:
+            rt.values[target.device_id][control.id] = control.value_from(read)
 
     def _render(self, rt: PortRuntime, device: Device) -> None:
-        values = rt.values[device.device_id]
-        data = bytearray(device.template.footprint)
-        for c in device.template.channels:
-            data[c.offset] = values[c.id]
-        rt.universe.write(device.address, bytes(data))
+        data = render(rt.controls[device.device_id], rt.values[device.device_id], device.template.footprint)
+        rt.universe.write(device.address, data)
 
     # ---- MQTT publishing ---------------------------------------------------------------------
 
@@ -306,11 +307,11 @@ class DmxService:
             info = f"DMX {span}"
         self._pub(f"{dev}/meta", {"driver": DRIVER, "title": title})
         self._pub(f"{dev}/meta/error", "w" if rt.sender.error else "")
-        for n, c in enumerate(target.template.channels, start=1):
-            self._pub(f"{dev}/controls/{c.id}/meta", {"type": "range", "order": n, "readonly": False, "min": 0,
-                                                     "max": 255, "title": c.title})
+        controls = rt.controls[target.device_id]
+        for n, c in enumerate(controls, start=1):
+            self._pub(f"{dev}/controls/{c.id}/meta", c.meta(n))
             self._pub(f"{dev}/controls/{c.id}", str(rt.values[target.device_id][c.id]))
-        n = len(target.template.channels) + 1
+        n = len(controls) + 1
         # The template title is the control's title, so the web UI shows it in its own language.
         self._pub(f"{dev}/controls/dmx/meta", {"type": "text", "readonly": True, "order": n,
                                                "title": target.template.title})
@@ -318,9 +319,9 @@ class DmxService:
 
     def _unpublish_all(self) -> None:
         """Clear retained topics so stopped devices do not linger in the web UI."""
-        for device_id, (_rt, target) in self._by_device.items():
+        for device_id, (rt, _target) in self._by_device.items():
             dev = f"/devices/{device_id}"
-            for cid in [c.id for c in target.template.channels] + ["dmx"]:
+            for cid in [c.id for c in rt.controls[device_id]] + ["dmx"]:
                 self._pub(f"{dev}/controls/{cid}/meta", "")
                 self._pub(f"{dev}/controls/{cid}", "")
             self._pub(f"{dev}/meta/error", "")
@@ -360,15 +361,15 @@ class DmxService:
                     self.blackout()
                     return True
                 return False
-            try:
-                value = max(0, min(255, int(float(payload))))
-            except ValueError:
-                return False
             found = self._by_device.get(device_id)
             if found is None:
                 return False
             rt, target = found
-            if control_id not in rt.values[device_id]:
+            control = next((c for c in rt.controls[device_id] if c.id == control_id), None)
+            if control is None:
+                return False
+            value = control.parse(payload)
+            if value is None:
                 return False
             rt.values[device_id][control_id] = value
             self._pub(f"/devices/{device_id}/controls/{control_id}", str(value))
@@ -386,9 +387,9 @@ class DmxService:
             for rt in self._runtimes.values():
                 rt.universe.blackout()
                 for device_id, values in rt.values.items():
-                    for cid in values:
-                        values[cid] = 0
-                        self._pub(f"/devices/{device_id}/controls/{cid}", "0")
+                    for control in rt.controls[device_id]:
+                        values[control.id] = control.zero
+                        self._pub(f"/devices/{device_id}/controls/{control.id}", str(control.zero))
             self._state_dirty.set()
 
     def _signal_handler(self, _signum: int, _frame: Optional[FrameType]) -> None:

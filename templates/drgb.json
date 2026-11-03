@@ -4,6 +4,11 @@
     "en": "Dimmer + RGB (4 ch)",
     "ru": "Диммер + RGB (4 канала)"
   },
+  "rgb": [
+    "red",
+    "green",
+    "blue"
+  ],
   "channels": [
     {
       "id": "dimmer",

@@ -4,6 +4,11 @@
     "en": "GRB (3 ch)",
     "ru": "GRB (3 канала)"
   },
+  "rgb": [
+    "red",
+    "green",
+    "blue"
+  ],
   "channels": [
     {
       "id": "green",

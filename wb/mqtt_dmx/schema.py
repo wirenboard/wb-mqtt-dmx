@@ -63,7 +63,7 @@ RU = {
     DEVICES_DESCRIPTION: "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт N одинаковых приборов "
                          "на адресах подряд плюс групповое устройство для всех сразу. MQTT-идентификатор строится из "
                          "названия (Фасад → dmx_fasad); заполняйте его, только если нужен конкретный.",
-    "MQTT id": "MQTT-идентификатор", "Address": "Адрес", "Device": "Прибор",
+    "MQTT id": "MQTT-идентификатор", "Address": "Адрес", "Device": "Прибор", "Channels": "Каналов",
 }
 
 
@@ -134,7 +134,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
 
 
 # Base types in the order a user expects to see them; any other template follows alphabetically.
-TYPE_ORDER = ["dimmer", "rgb", "grb", "rgbw", "grbw", "drgb", "drgbw", "cct", "rgbcct"]
+TYPE_ORDER = ["channels", "dimmer", "rgb", "grb", "rgbw", "grbw", "drgb", "drgbw", "cct", "rgbcct"]
 
 
 def type_order(templates: dict[str, Template]) -> list[str]:
@@ -150,13 +150,16 @@ def device_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "title": "Device",
         "properties": {
             "name": {"type": "string", "title": "Name", "default": "Device", "minLength": 1, "propertyOrder": 1},
-            "type": {"type": "string", "title": "Type", "enum": types or ["dimmer"], "default": types[0] if types else "dimmer",
-                     "propertyOrder": 2, "options": {"enum_titles": titles or ["Dimmer"]}},
-            "address": _int("Address", 0, UNIVERSE_SIZE, 0, 3),
-            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 4),
+            "type": {"type": "string", "title": "Type", "enum": types or ["channels"],
+                     "default": types[0] if types else "channels",
+                     "propertyOrder": 2, "options": {"enum_titles": titles or ["Channels"]}},
+            # Only the built-in 'channels' type uses this; json-editor hides it for the others.
+            "channels": _int("Channels", 1, UNIVERSE_SIZE, 1, 3, options={"dependencies": {"type": ["channels"]}}),
+            "address": _int("Address", 0, UNIVERSE_SIZE, 0, 4),
+            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 5),
             # Empty id = derived from the name by transliteration (facade, prolet_1); shown in the device card.
             "id": {"type": "string", "title": "MQTT id", "pattern": "^([a-z0-9_]{1,32})?$", "default": "",
-                   "propertyOrder": 5},
+                   "propertyOrder": 6},
         },
         "required": ["name", "type"],
         "options": {"disable_edit_json": True, "disable_properties": True},

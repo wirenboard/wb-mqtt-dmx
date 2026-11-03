@@ -4,6 +4,11 @@
     "en": "RGB + CCT (5 ch)",
     "ru": "RGB + CCT (5 каналов)"
   },
+  "rgb": [
+    "red",
+    "green",
+    "blue"
+  ],
   "channels": [
     {
       "id": "red",

@@ -11,8 +11,11 @@ TEMPLATES = templates.load_templates([ROOT / "templates"])
 
 def test_base_templates_load_with_expected_footprints():
     assert {t: TEMPLATES[t].footprint for t in TEMPLATES} == {
-        "dimmer": 1, "rgb": 3, "grb": 3, "rgbw": 4, "grbw": 4, "drgb": 4, "drgbw": 5, "cct": 2, "rgbcct": 5}
+        "channels": 1, "dimmer": 1, "rgb": 3, "grb": 3, "rgbw": 4, "grbw": 4, "drgb": 4, "drgbw": 5, "cct": 2,
+        "rgbcct": 5}
     assert [c.id for c in TEMPLATES["grbw"].channels] == ["green", "red", "blue", "white"]
+    assert TEMPLATES["grbw"].rgb == ("red", "green", "blue") and TEMPLATES["cct"].rgb is None
+    assert TEMPLATES["channels"].dynamic and templates.channels_template(3).footprint == 3
     assert TEMPLATES["rgbw"].title["ru"].startswith("RGBW")
 
 
@@ -25,6 +28,8 @@ def test_template_offsets_and_errors():
         templates.parse_template({"type": "Bad Type", "channels": [{"id": "a"}]})
     with pytest.raises(templates.TemplateError, match="non-empty"):
         templates.parse_template({"type": "x", "channels": []})
+    with pytest.raises(templates.TemplateError, match="rgb must list three"):
+        templates.parse_template({"type": "x", "rgb": ["a", "b"], "channels": [{"id": "a"}, {"id": "b"}]})
 
 
 def test_user_directory_overrides_base(tmp_path):
@@ -58,7 +63,9 @@ def test_schema_lists_template_types_with_titles_and_translations():
     s = schema.build_schema(TEMPLATES)
     port = s["properties"]["ports"]["items"]
     dev = port["properties"]["devices"]["items"]["properties"]["type"]
-    assert dev["enum"] == ["dimmer", "rgb", "grb", "rgbw", "grbw", "drgb", "drgbw", "cct", "rgbcct"]
+    assert dev["enum"] == ["channels", "dimmer", "rgb", "grb", "rgbw", "grbw", "drgb", "drgbw", "cct", "rgbcct"]
+    chans = port["properties"]["devices"]["items"]["properties"]["channels"]
+    assert chans["options"]["dependencies"] == {"type": ["channels"]} and chans["default"] == 1
     assert dev["options"]["enum_titles"][dev["enum"].index("rgbw")] == "RGBW (4 ch)"
     assert s["translations"]["ru"]["RGBW (4 ch)"] == "RGBW (4 канала)"
     assert s["configFile"] == {"path": "/etc/wb-mqtt-dmx.conf", "service": "wb-mqtt-dmx"}
