@@ -42,11 +42,14 @@ def test_shipped_config_is_valid_for_the_schema():
     jsonschema.validate(shipped, s)
     def with_devices(devices):
         return {"ports": [{**shipped["ports"][0], "devices": devices}]}
-    jsonschema.validate(with_devices([{"id": "facade", "name": "Фасад", "type": "rgbw", "address": 0, "count": 40}]), s)
+    jsonschema.validate(with_devices([{"name": "Фасад", "type": "rgbw", "address": 0, "count": 40},
+                                      {"name": "Logo", "type": "dimmer", "id": "logo_main"}]), s)
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(with_devices([{"id": "Bad", "type": "rgbw"}]), s)
+        jsonschema.validate(with_devices([{"name": "x", "id": "Bad", "type": "rgbw"}]), s)
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(with_devices([{"id": "x", "type": "nope"}]), s)
+        jsonschema.validate(with_devices([{"name": "x", "type": "nope"}]), s)
+    with pytest.raises(jsonschema.ValidationError):                  # a name is required, an id is not
+        jsonschema.validate(with_devices([{"type": "rgbw"}]), s)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({"ports": []}, s)
 
@@ -67,7 +70,7 @@ def test_schema_lists_template_types_with_titles_and_translations():
     shipped = json.loads((ROOT / "wb-mqtt-dmx.conf").read_text(encoding="utf-8"))
     assert [p["settings"]["path"] for p in shipped["ports"]] == ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]
     assert not any(p["settings"]["enabled"] for p in shipped["ports"])
-    assert adv["options"]["collapsed"] is True and "start_scene" in adv["properties"]
+    assert adv["options"]["collapsed"] is True and "start_scene" not in adv["properties"]
 
 
 def test_write_schema_skips_unchanged(tmp_path):

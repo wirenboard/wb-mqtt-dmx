@@ -30,12 +30,11 @@ ON_STOP_DESCRIPTION = ("What happens when the service stops. Hold: frames just s
                        "values until their own timeout. Blackout: all channels are set to 0 first.")
 RAW_DESCRIPTION = ("Expose the first N channels of the line as a device dmx_<port> with sliders ch1…chN "
                    "(dmx_rs485_2 for /dev/ttyRS485-2), for devices without a template and for wb-rules. 0: no such device.")
-START_SCENE_DESCRIPTION = "Channel values applied at start when 'Scene' is selected above; other channels are 0."
 DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
-DEVICES_DESCRIPTION = ("Id without the dmx_ prefix (facade → dmx_facade; latin letters, digits, underscore). Address 0 "
-                       "places the device right after the previous one. Count above 1 gives id1…idN on consecutive "
-                       "addresses plus a group device id for all of them.")
+DEVICES_DESCRIPTION = ("Address 0 places the device right after the previous one. Count above 1 gives N identical "
+                       "devices on consecutive addresses plus a group device for all of them. The MQTT id is made from "
+                       "the name (Фасад → dmx_fasad); fill it in only to pin a specific id.")
 
 RU = {
     TITLE: "Выход DMX512",
@@ -43,17 +42,16 @@ RU = {
                  "линия DMX со своими приборами. Порт нужно сначала отключить в настройках драйвера последовательных "
                  "устройств (Настройки → Конфигурационные файлы → Настройка драйвера serial-устройств), как для "
                  "wb-mqtt-mbgate.",
-    "Ports": "Порты", "Port": "Порт", "Port settings": "Настройки порта", "Device": "Прибор", "Name": "Название",
+    "Ports": "Порты", "Port": "Порт", "Port settings": "Настройки порта", "Name": "Название",
     "Enabled": "Включён",
     ENABLED_DESCRIPTION: "Выдавать DMX на этом порту. Не включайте, пока порт не отключён в настройках драйвера "
                          "serial-устройств, иначе оба драйвера пишут в одну линию.",
     "Serial port": "Порт", "Frame rate, Hz": "Частота кадров, Гц", "On start": "При старте",
     "On stop": "При остановке", "Restore last values": "Восстановить последние значения",
-    "All channels 0": "Все каналы в 0", "Scene": "Сцена", "Hold last frame": "Оставить как есть",
+    "All channels 0": "Все каналы в 0", "Hold last frame": "Оставить как есть",
     "Blackout": "Погасить всё", "Advanced": "Дополнительно", "Channels per frame": "Каналов в кадре",
     "BREAK, µs": "BREAK, мкс", "MAB, µs": "MAB, мкс", "Transmitter enable": "Включение передатчика",
     "RTS": "RTS", "Kernel": "Ядро", "Raw channels as a device": "Сырые каналы как устройство",
-    "Start scene": "Стартовая сцена", "Channel": "Канал", "Value": "Значение",
     "Devices": "Приборы", "Device id": "Идентификатор", "Type": "Тип", "Start address": "Стартовый адрес",
     "Count": "Количество",
     PORT_DESCRIPTION: "/dev/ttyRS485-1, /dev/ttyRS485-2 или порт модуля WBE2, например /dev/ttyMOD1.",
@@ -64,13 +62,12 @@ RU = {
                          "последние значения до своего таймаута. Погасить: сначала все каналы ставятся в 0.",
     RAW_DESCRIPTION: "Опубликовать первые N каналов линии как устройство dmx_<порт> с ползунками ch1…chN "
                      "(dmx_rs485_2 для /dev/ttyRS485-2) — для приборов без шаблона и для wb-rules. 0 — устройства нет.",
-    START_SCENE_DESCRIPTION: "Значения каналов при старте, если выше выбрана «Сцена»; остальные каналы — 0.",
     DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
                     "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
-    DEVICES_DESCRIPTION: "Идентификатор без префикса dmx_ (facade → dmx_facade; латинские буквы, цифры, подчёркивание). "
-                         "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт id1…idN на адресах "
-                         "подряд плюс групповое устройство id для всех сразу.",
-    "Id": "Идентификатор", "Address": "Адрес",
+    DEVICES_DESCRIPTION: "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт N одинаковых приборов "
+                         "на адресах подряд плюс групповое устройство для всех сразу. MQTT-идентификатор строится из "
+                         "названия (Фасад → dmx_fasad); заполняйте его, только если нужен конкретный.",
+    "MQTT id": "MQTT-идентификатор", "Address": "Адрес", "Device": "Прибор",
 }
 
 
@@ -92,20 +89,6 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
                            "options": {"enum_titles": ["RTS", "Kernel"], "grid_columns": 6}},
             "raw_channels": _int("Raw channels as a device", 0, UNIVERSE_SIZE, 0, 5, description=RAW_DESCRIPTION,
                                  options={"grid_columns": 6}),
-            "start_scene": {
-                "type": "array", "title": "Start scene", "propertyOrder": 6, "_format": "table",
-                "description": START_SCENE_DESCRIPTION,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "channel": _int("Channel", 1, UNIVERSE_SIZE, 1, 1),
-                        "value": _int("Value", 0, 255, 0, 2),
-                    },
-                    "required": ["channel", "value"],
-                    "options": {"disable_edit_json": True, "disable_properties": True},
-                },
-                "options": {"disable_array_reorder": True},
-            },
         },
     }
     settings = {
@@ -122,9 +105,9 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
                      "options": {"grid_columns": 6}},
             "refresh_hz": _int("Frame rate, Hz", 1, 44, 40, 3, description=REFRESH_DESCRIPTION,
                                options={"grid_columns": 4}),
-            "on_start": {"type": "string", "title": "On start", "enum": ["restore", "zero", "scene"],
+            "on_start": {"type": "string", "title": "On start", "enum": ["restore", "zero"],
                          "default": "restore", "propertyOrder": 4, "description": ON_START_DESCRIPTION,
-                         "options": {"enum_titles": ["Restore last values", "All channels 0", "Scene"],
+                         "options": {"enum_titles": ["Restore last values", "All channels 0"],
                                      "grid_columns": 4}},
             "on_stop": {"type": "string", "title": "On stop", "enum": ["hold", "blackout"], "default": "hold",
                         "propertyOrder": 5, "description": ON_STOP_DESCRIPTION,
@@ -170,14 +153,16 @@ def device_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "type": "object",
         "title": "Device",
         "properties": {
-            "id": {"type": "string", "title": "Id", "pattern": "^[a-z0-9_]{1,32}$", "propertyOrder": 1},
-            "name": {"type": "string", "title": "Name", "propertyOrder": 2},
+            "name": {"type": "string", "title": "Name", "default": "Device", "minLength": 1, "propertyOrder": 1},
             "type": {"type": "string", "title": "Type", "enum": types or ["dimmer"], "default": types[0] if types else "dimmer",
-                     "propertyOrder": 3, "options": {"enum_titles": titles or ["Dimmer"]}},
-            "address": _int("Address", 0, UNIVERSE_SIZE, 0, 4),
-            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 5),
+                     "propertyOrder": 2, "options": {"enum_titles": titles or ["Dimmer"]}},
+            "address": _int("Address", 0, UNIVERSE_SIZE, 0, 3),
+            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 4),
+            # Empty id = derived from the name by transliteration (facade, prolet_1); shown in the device card.
+            "id": {"type": "string", "title": "MQTT id", "pattern": "^([a-z0-9_]{1,32})?$", "default": "",
+                   "propertyOrder": 5},
         },
-        "required": ["id", "type"],
+        "required": ["name", "type"],
         "options": {"disable_edit_json": True, "disable_properties": True},
     }
 
