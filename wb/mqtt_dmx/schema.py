@@ -32,9 +32,8 @@ START_SCENE_DESCRIPTION = "Channel values applied at start when 'Scene' is selec
 DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
 ADDRESS_DESCRIPTION = "First DMX channel of the device. 0 places it right after the previous device on this port."
-COUNT_DESCRIPTION = ("Number of identical devices; they take consecutive addresses and get ids <id>1…<id>N plus a "
-                     "group device <id> that drives them all.")
-ID_DESCRIPTION = "MQTT device id without the dmx_ prefix: 'facade' gives dmx_facade. Latin letters, digits, underscore."
+COUNT_DESCRIPTION = "Identical devices on consecutive addresses: ids <id>1…<id>N plus a group device <id> for all of them."
+ID_DESCRIPTION = "Without the dmx_ prefix: facade → dmx_facade. Latin letters, digits, underscore."
 
 RU = {
     TITLE: "Выход DMX512",
@@ -64,10 +63,9 @@ RU = {
     DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
                     "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
     ADDRESS_DESCRIPTION: "Первый DMX-канал прибора. 0 — сразу после предыдущего прибора на этом порту.",
-    COUNT_DESCRIPTION: "Сколько одинаковых приборов; они займут адреса подряд и получат идентификаторы <id>1…<id>N "
-                       "плюс групповое устройство <id>, управляющее всеми сразу.",
-    ID_DESCRIPTION: "Идентификатор MQTT-устройства без префикса dmx_: «facade» даст dmx_facade. Латинские буквы, "
-                    "цифры, подчёркивание.",
+    COUNT_DESCRIPTION: "Одинаковые приборы на адресах подряд: идентификаторы <id>1…<id>N плюс групповое устройство "
+                       "<id> для всех сразу.",
+    ID_DESCRIPTION: "Без префикса dmx_: facade → dmx_facade. Латинские буквы, цифры, подчёркивание.",
 }
 
 
@@ -78,7 +76,7 @@ def _int(title: str, minimum: int, maximum: int, default: int, order: int, **ext
 
 def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
     advanced = {
-        "type": "object", "title": "Advanced", "propertyOrder": 100,
+        "type": "object", "title": "Advanced", "propertyOrder": 100, "_format": "grid",
         "options": {"collapsed": True, "disable_edit_json": True, "disable_properties": True},
         "properties": {
             "slots": _int("Channels per frame", 24, UNIVERSE_SIZE, UNIVERSE_SIZE, 1, options={"grid_columns": 4}),
@@ -108,7 +106,8 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
     return {
         "type": "object",
         "title": "Port",
-        "headerTemplate": "{{self.path}} — {{self.name}}",
+        "_format": "grid",
+        "headerTemplate": "{{self.name}} ({{self.path}})",
         "properties": {
             "path": {"type": "string", "title": "Serial port", "minLength": 1, "default": "/dev/ttyRS485-2",
                      "propertyOrder": 1, "description": PORT_DESCRIPTION, "options": {"grid_columns": 6}},
@@ -125,9 +124,10 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
                         "options": {"enum_titles": ["Hold last frame", "Blackout"], "grid_columns": 4}},
             "advanced": advanced,
             "devices": {
-                "type": "array", "title": "Devices", "propertyOrder": 200,
+                "type": "array", "title": "Devices", "propertyOrder": 200, "_format": "tabs",
                 "items": device_schema(templates),
-                "options": {"disable_array_reorder": True, "disable_collapse": True},
+                "options": {"disable_array_reorder": True, "disable_collapse": True,
+                            "disable_array_delete_last_row": True},
             },
         },
         "required": ["path", "devices"],
@@ -150,7 +150,8 @@ def device_schema(templates: dict[str, Template]) -> dict[str, Any]:
     return {
         "type": "object",
         "title": "Device",
-        "headerTemplate": "{{self.name}} ({{self.type}}) × {{self.count}}",
+        "_format": "grid",
+        "headerTemplate": "{{self.id}} · {{self.type}} × {{self.count}}",
         "properties": {
             "id": {"type": "string", "title": "Device id", "pattern": "^[a-z0-9_]{1,32}$", "propertyOrder": 1,
                    "description": ID_DESCRIPTION, "options": {"grid_columns": 4}},
@@ -179,9 +180,10 @@ def build_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "options": {"disable_edit_json": True, "disable_properties": True, "disable_collapse": True},
         "properties": {
             "ports": {
-                "type": "array", "title": "Ports", "propertyOrder": 1, "minItems": 1,
+                "type": "array", "title": "Ports", "propertyOrder": 1, "minItems": 1, "_format": "tabs",
                 "items": port_schema(templates),
-                "options": {"disable_array_reorder": True, "disable_collapse": True},
+                "options": {"disable_array_reorder": True, "disable_collapse": True,
+                            "disable_array_delete_last_row": True},
             },
         },
         "required": ["ports"],
