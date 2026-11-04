@@ -1,16 +1,18 @@
-"""Decoder templates: which DMX channels a device type has and in which order.
+"""Device types: which DMX channels a device has, in which order, and what they mean.
 
-A template is a small JSON file:
+Three sources, all producing the same `Template`:
 
-    {"type": "rgbw", "title": {"en": "RGBW (4 ch)", "ru": "RGBW (4 канала)"},
-     "channels": [{"id": "red", "title": {"en": "Red", "ru": "Красный"}, "default": 0}, ...]}
+* **Layout string** (the default type, like Home Assistant's `channel_setup`): one letter per channel,
+  `d` dimmer, `r` `g` `b` red/green/blue, `w` white, `a` amber, `u` UV, `c` cold white, `h` warm white,
+  `s` strobe, `_` an unused channel. `dRGBW` is a 5-channel decoder with a master dimmer. Case does
+  not matter. With 16-bit resolution every channel takes two DMX slots (coarse, fine).
+* **Channels**: N plain channels ch1…chN, for anything else.
+* **JSON template files** for devices with named channels, modes and enum channels (strobe programs,
+  wheels); the package may ship some, a user adds their own in /etc/wb-mqtt-dmx.conf.d/templates.
+  Also the target format of a future OFL / GDTF converter. A template file:
 
-Channel order is DMX order; a channel may carry `"offset": N` (0-based) to skip unused addresses,
-otherwise channels are consecutive. An optional `"rgb": ["red", "green", "blue"]` names the channels
-that the service folds into one colour control. The type `channels` is built in: a device of any
-number of plain channels ch1…chN, the number set per device in the configuration. The package ships a base set in /usr/share/wb-mqtt-dmx/templates;
-a user adds their own in /etc/wb-mqtt-dmx.conf.d/templates (same file name overrides the base one),
-the way wb-mqtt-serial templates work.
+    {"type": "my-par", "title": {"en": "My PAR", "ru": "Мой PAR"}, "rgb": ["red", "green", "blue"],
+     "channels": [{"id": "red", "title": {"en": "Red", "ru": "Красный"}, "default": 0, "bits": 8}, …]}
 """
 
 from __future__ import annotations
@@ -26,17 +28,48 @@ USER_DIR = Path("/etc/wb-mqtt-dmx.conf.d/templates")
 ID_RE = re.compile(r"^[a-z0-9_]{1,32}$")
 MAX_CHANNELS = 512
 
+LAYOUT_TYPE = "layout"
+LAYOUT_TITLE = {"en": "Layout", "ru": "Раскладка"}
+CHANNELS_TYPE = "channels"
+CHANNELS_TITLE = {"en": "Channels", "ru": "Каналы"}
+BUILTIN_TYPES = (LAYOUT_TYPE, CHANNELS_TYPE)
+DEFAULT_LAYOUT = "rgbw"
+LAYOUT_RE = r"^[dDrRgGbBwWaAuUcChHsS_]{1,64}$"
+
+# letter -> (control id, titles); the same letter twice gets _2, _3 …
+LAYOUT_LETTERS = {
+    "d": ("dimmer", {"en": "Dimmer", "ru": "Диммер"}),
+    "r": ("red", {"en": "Red", "ru": "Красный"}),
+    "g": ("green", {"en": "Green", "ru": "Зелёный"}),
+    "b": ("blue", {"en": "Blue", "ru": "Синий"}),
+    "w": ("white", {"en": "White", "ru": "Белый"}),
+    "a": ("amber", {"en": "Amber", "ru": "Янтарный"}),
+    "u": ("uv", {"en": "UV", "ru": "УФ"}),
+    "c": ("cold", {"en": "Cold white", "ru": "Холодный белый"}),
+    "h": ("warm", {"en": "Warm white", "ru": "Тёплый белый"}),
+    "s": ("strobe", {"en": "Strobe", "ru": "Строб"}),
+}
+
 
 class TemplateError(ValueError):
-    """A template file is malformed."""
+    """A template file or a layout string is malformed."""
 
 
 @dataclass
 class Channel:
     id: str
     title: dict[str, str]
-    offset: int                      # 0-based offset from the device start address
+    offset: int                      # 0-based offset of the coarse byte from the device start address
     default: int = 0
+    bits: int = 8                    # 16: the fine byte follows the coarse one
+
+    @property
+    def width(self) -> int:
+        return 2 if self.bits == 16 else 1
+
+    @property
+    def max_value(self) -> int:
+        return 65535 if self.bits == 16 else 255
 
 
 @dataclass
@@ -46,12 +79,12 @@ class Template:
     channels: list[Channel] = field(default_factory=list)
     source: str = ""                 # file the template came from, for messages
     rgb: Optional[tuple[str, str, str]] = None   # channel ids folded into one colour control
-    dynamic: bool = False            # channel count comes from the device entry (the `channels` type)
+    dynamic: bool = False            # built in; shape comes from the device entry
 
     @property
     def footprint(self) -> int:
         """DMX addresses the device occupies."""
-        return max((c.offset + 1 for c in self.channels), default=0)
+        return max((c.offset + c.width for c in self.channels), default=0)
 
 
 def _title(raw: Any, fallback: str, where: str) -> dict[str, str]:
@@ -70,6 +103,8 @@ def parse_template(doc: Any, source: str = "") -> Template:
     key = str(doc.get("type") or "")
     if not ID_RE.match(key):
         raise TemplateError(f"{source}: type must match {ID_RE.pattern}, got {key!r}")
+    if key in BUILTIN_TYPES:
+        raise TemplateError(f"{source}: the type '{key}' is built in")
     chans_raw = doc.get("channels")
     if not isinstance(chans_raw, list) or not chans_raw:
         raise TemplateError(f"{source}: channels must be a non-empty list")
@@ -87,13 +122,16 @@ def parse_template(doc: Any, source: str = "") -> Template:
             raise TemplateError(f"{where}: duplicate id {cid!r}")
         seen.add(cid)
         offset = int(c.get("offset", next_offset))
+        bits = int(c.get("bits", 8))
+        if bits not in (8, 16):
+            raise TemplateError(f"{where}: bits must be 8 or 16")
         if not 0 <= offset < MAX_CHANNELS:
             raise TemplateError(f"{where}: offset out of range")
         default = int(c.get("default", 0))
-        if not 0 <= default <= 255:
-            raise TemplateError(f"{where}: default must be 0..255")
-        channels.append(Channel(cid, _title(c.get("title"), cid, where), offset, default))
-        next_offset = offset + 1
+        if not 0 <= default <= (65535 if bits == 16 else 255):
+            raise TemplateError(f"{where}: default out of range")
+        channels.append(Channel(cid, _title(c.get("title"), cid, where), offset, default, bits))
+        next_offset = offset + (2 if bits == 16 else 1)
     rgb = doc.get("rgb")
     if rgb is not None:
         if not isinstance(rgb, list) or len(rgb) != 3 or not all(str(c) in seen for c in rgb):
@@ -102,19 +140,44 @@ def parse_template(doc: Any, source: str = "") -> Template:
     return Template(key, _title(doc.get("title"), key, source), channels, source, rgb)
 
 
-CHANNELS_TYPE = "channels"
-CHANNELS_TITLE = {"en": "Channels", "ru": "Каналы"}
+def layout_template(layout: str, bits: int = 8) -> Template:
+    """A device described by a layout string, e.g. 'dRGBW' or 'rgb' (see the module docstring)."""
+    layout = str(layout or "").strip()
+    if not re.match(LAYOUT_RE, layout):
+        raise TemplateError(f"layout {layout!r}: use the letters d r g b w a u c h s and _ (1..64 of them)")
+    if bits not in (8, 16):
+        raise TemplateError("bits must be 8 or 16")
+    channels: list[Channel] = []
+    counts: dict[str, int] = {}
+    offset = 0
+    width = 2 if bits == 16 else 1
+    for letter in layout.lower():
+        if letter != "_":
+            cid, title = LAYOUT_LETTERS[letter]
+            counts[cid] = counts.get(cid, 0) + 1
+            if counts[cid] > 1:
+                cid, title = f"{cid}_{counts[cid]}", {k: f"{v} {counts[cid]}" for k, v in title.items()}
+            channels.append(Channel(cid, title, offset, 0, bits))
+        offset += width
+    if not channels:
+        raise TemplateError(f"layout {layout!r}: at least one channel must not be '_'")
+    rgb = ("red", "green", "blue") if all(k in counts for k in ("red", "green", "blue")) else None
+    return Template(LAYOUT_TYPE, LAYOUT_TITLE, channels, "layout", rgb, dynamic=True)
 
 
 def channels_template(count: int) -> Template:
-    """The built-in type: `count` plain channels ch1…chN."""
+    """N plain channels ch1…chN."""
     chans = [Channel(f"ch{i}", {"en": f"Ch {i}", "ru": f"Канал {i}"}, i - 1) for i in range(1, count + 1)]
     return Template(CHANNELS_TYPE, CHANNELS_TITLE, chans, "built-in", dynamic=True)
 
 
+def builtin_templates() -> dict[str, Template]:
+    return {LAYOUT_TYPE: layout_template(DEFAULT_LAYOUT), CHANNELS_TYPE: channels_template(1)}
+
+
 def load_templates(dirs: list[Path] | None = None) -> dict[str, Template]:
-    """type -> Template from the base and user directories; later directories override."""
-    out: dict[str, Template] = {CHANNELS_TYPE: channels_template(1)}
+    """type -> Template: the built-in types plus every file of the directories (later ones override)."""
+    out = builtin_templates()
     for d in dirs if dirs is not None else [BASE_DIR, USER_DIR]:
         if not d.is_dir():
             continue
@@ -124,7 +187,5 @@ def load_templates(dirs: list[Path] | None = None) -> dict[str, Template]:
             except (OSError, ValueError) as e:
                 raise TemplateError(f"{path}: {e}") from e
             t = parse_template(doc, str(path))
-            if t.type == CHANNELS_TYPE:
-                raise TemplateError(f"{path}: the type '{CHANNELS_TYPE}' is built in")
             out[t.type] = t
     return out

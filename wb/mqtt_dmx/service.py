@@ -203,7 +203,7 @@ class DmxService:
     def _pull_values_from_universe(self, rt: PortRuntime, target: Target) -> None:
         """Device values from the buffer (after a restore); a group shows its first member."""
         dev = target.members[0] if isinstance(target, Group) else target
-        read = {c.offset: rt.universe.get(dev.address + c.offset) for c in target.template.channels}
+        read = {off: rt.universe.get(dev.address + off) for off in range(target.template.footprint)}
         for control in rt.controls[target.device_id]:
             rt.values[target.device_id][control.id] = control.value_from(read)
 

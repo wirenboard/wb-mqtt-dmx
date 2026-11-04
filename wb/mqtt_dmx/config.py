@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .ids import id_from_name, unique_id
-from .templates import Template, channels_template
+from .templates import LAYOUT_TYPE, Template, TemplateError, channels_template, layout_template
 
 DEVICE_PREFIX = "dmx_"
 AUTO_ADDRESS = 0
@@ -151,11 +151,16 @@ def load_config(config: dict[str, Any], templates: dict[str, Template]) -> list[
                 raise ConfigError(f"device name '{name}' is used twice ({seen_names[key]} and {port.path}); "
                                   f"names must be unique, use Count for identical devices")
             seen_names[key] = port.path
-            type_key = str(dev.get("type") or "channels")
+            type_key = str(dev.get("type") or LAYOUT_TYPE)
             template = templates.get(type_key)
             if template is None:
                 raise ConfigError(f"{where}: unknown type '{type_key}'")
-            if template.dynamic:
+            if type_key == LAYOUT_TYPE:
+                try:
+                    template = layout_template(str(dev.get("layout") or ""), _int(dev, "bits", 8, 8, 16, where))
+                except TemplateError as e:
+                    raise ConfigError(f"{where}: {e}") from e
+            elif template.dynamic:
                 template = channels_template(_int(dev, "channels", 1, 1, UNIVERSE_SIZE, where))
             pinned = str(dev.get("id") or "").strip()
             base = pinned or id_from_name(name)

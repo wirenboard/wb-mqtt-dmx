@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .templates import Template
+from .templates import DEFAULT_LAYOUT, LAYOUT_RE, Template
 
 CONFIG_PATH = "/etc/wb-mqtt-dmx.conf"
 SERVICE = "wb-mqtt-dmx"
@@ -30,9 +30,11 @@ ON_STOP_DESCRIPTION = ("What happens when the service stops. Hold: frames just s
                        "values until their own timeout. Blackout: all channels are set to 0 first.")
 DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
-DEVICES_DESCRIPTION = ("Address 0 places the device right after the previous one. Count above 1 gives N identical "
-                       "devices on consecutive addresses plus a group device for all of them. The MQTT id is made from "
-                       "the name (Фасад → dmx_fasad); fill it in only to pin a specific id.")
+DEVICES_DESCRIPTION = ("Layout: one letter per DMX channel in the device's order — d dimmer, r g b colour, w white, "
+                       "a amber, u UV, c cold white, h warm white, s strobe, _ unused; e.g. dRGBW. Address 0 places the "
+                       "device right after the previous one. Count above 1 gives N identical devices on consecutive "
+                       "addresses plus a group device for all of them. The MQTT id is made from the name "
+                       "(Фасад → dmx_fasad); fill it in only to pin a specific id.")
 
 RU = {
     TITLE: "Выход DMX512",
@@ -60,9 +62,12 @@ RU = {
                          "последние значения до своего таймаута. Погасить: сначала все каналы ставятся в 0.",
     DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
                     "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
-    DEVICES_DESCRIPTION: "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт N одинаковых приборов "
+    DEVICES_DESCRIPTION: "Раскладка: по букве на DMX-канал в порядке прибора — d диммер, r g b цвет, w белый, "
+                         "a янтарный, u УФ, c холодный белый, h тёплый белый, s строб, _ не используется; например dRGBW. "
+                         "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт N одинаковых приборов "
                          "на адресах подряд плюс групповое устройство для всех сразу. MQTT-идентификатор строится из "
                          "названия (Фасад → dmx_fasad); заполняйте его, только если нужен конкретный.",
+    "Layout": "Раскладка", "Resolution": "Разрядность", "8 bit": "8 бит", "16 bit": "16 бит",
     "MQTT id": "MQTT-идентификатор", "Address": "Адрес", "Device": "Прибор", "Channels": "Каналов",
 }
 
@@ -134,7 +139,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
 
 
 # Base types in the order a user expects to see them; any other template follows alphabetically.
-TYPE_ORDER = ["channels", "dimmer", "rgb", "grb", "rgbw", "grbw", "drgb", "drgbw", "cct", "rgbcct"]
+TYPE_ORDER = ["layout", "channels"]
 
 
 def type_order(templates: dict[str, Template]) -> list[str]:
@@ -150,16 +155,20 @@ def device_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "title": "Device",
         "properties": {
             "name": {"type": "string", "title": "Name", "default": "Device", "minLength": 1, "propertyOrder": 1},
-            "type": {"type": "string", "title": "Type", "enum": types or ["channels"],
-                     "default": types[0] if types else "channels",
-                     "propertyOrder": 2, "options": {"enum_titles": titles or ["Channels"]}},
-            # Only the built-in 'channels' type uses this; json-editor hides it for the others.
-            "channels": _int("Channels", 1, UNIVERSE_SIZE, 1, 3, options={"dependencies": {"type": ["channels"]}}),
-            "address": _int("Address", 0, UNIVERSE_SIZE, 0, 4),
-            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 5),
+            "type": {"type": "string", "title": "Type", "enum": types or ["layout"],
+                     "default": types[0] if types else "layout",
+                     "propertyOrder": 2, "options": {"enum_titles": titles or ["Layout"]}},
+            # Fields of the built-in types; json-editor shows each only for its type.
+            "layout": {"type": "string", "title": "Layout", "pattern": LAYOUT_RE, "default": DEFAULT_LAYOUT,
+                       "propertyOrder": 3, "options": {"dependencies": {"type": ["layout"]}}},
+            "bits": {"type": "integer", "title": "Resolution", "enum": [8, 16], "default": 8, "propertyOrder": 4,
+                     "options": {"enum_titles": ["8 bit", "16 bit"], "dependencies": {"type": ["layout"]}}},
+            "channels": _int("Channels", 1, UNIVERSE_SIZE, 1, 5, options={"dependencies": {"type": ["channels"]}}),
+            "address": _int("Address", 0, UNIVERSE_SIZE, 0, 6),
+            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 7),
             # Empty id = derived from the name by transliteration (facade, prolet_1); shown in the device card.
             "id": {"type": "string", "title": "MQTT id", "pattern": "^([a-z0-9_]{1,32})?$", "default": "",
-                   "propertyOrder": 6},
+                   "propertyOrder": 8},
         },
         "required": ["name", "type"],
         "options": {"disable_edit_json": True, "disable_properties": True},

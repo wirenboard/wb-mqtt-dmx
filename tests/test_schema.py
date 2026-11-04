@@ -9,14 +9,22 @@ ROOT = Path(__file__).parent.parent
 TEMPLATES = templates.load_templates([ROOT / "templates"])
 
 
-def test_base_templates_load_with_expected_footprints():
-    assert {t: TEMPLATES[t].footprint for t in TEMPLATES} == {
-        "channels": 1, "dimmer": 1, "rgb": 3, "grb": 3, "rgbw": 4, "grbw": 4, "drgb": 4, "drgbw": 5, "cct": 2,
-        "rgbcct": 5}
-    assert [c.id for c in TEMPLATES["grbw"].channels] == ["green", "red", "blue", "white"]
-    assert TEMPLATES["grbw"].rgb == ("red", "green", "blue") and TEMPLATES["cct"].rgb is None
+def test_layout_strings_become_templates():
+    t = templates.layout_template("dRGBW")
+    assert [(c.id, c.offset) for c in t.channels] == [("dimmer", 0), ("red", 1), ("green", 2), ("blue", 3), ("white", 4)]
+    assert t.footprint == 5 and t.rgb == ("red", "green", "blue") and t.title["ru"] == "Раскладка"
+    t16 = templates.layout_template("ch", 16)
+    assert [(c.id, c.offset, c.bits) for c in t16.channels] == [("cold", 0, 16), ("warm", 2, 16)] and t16.footprint == 4
+    skip = templates.layout_template("r_g_b")
+    assert [c.offset for c in skip.channels] == [0, 2, 4] and skip.footprint == 5
+    twice = templates.layout_template("ww")
+    assert [c.id for c in twice.channels] == ["white", "white_2"] and twice.channels[1].title["ru"] == "Белый 2"
+    assert templates.layout_template("d").rgb is None
+    for bad in ("", "xyz", "___", "r" * 65):
+        with pytest.raises(templates.TemplateError):
+            templates.layout_template(bad)
+    assert set(TEMPLATES) == {"layout", "channels"}
     assert TEMPLATES["channels"].dynamic and templates.channels_template(3).footprint == 3
-    assert TEMPLATES["rgbw"].title["ru"].startswith("RGBW")
 
 
 def test_template_offsets_and_errors():
@@ -30,14 +38,18 @@ def test_template_offsets_and_errors():
         templates.parse_template({"type": "x", "channels": []})
     with pytest.raises(templates.TemplateError, match="rgb must list three"):
         templates.parse_template({"type": "x", "rgb": ["a", "b"], "channels": [{"id": "a"}, {"id": "b"}]})
+    with pytest.raises(templates.TemplateError, match="built in"):
+        templates.parse_template({"type": "layout", "channels": [{"id": "a"}]})
+    wide = templates.parse_template({"type": "x", "channels": [{"id": "a", "bits": 16}, {"id": "b"}]})
+    assert [(c.offset, c.width) for c in wide.channels] == [(0, 2), (2, 1)] and wide.footprint == 3
 
 
-def test_user_directory_overrides_base(tmp_path):
+def test_user_directory_adds_templates(tmp_path):
     user = tmp_path / "user"
     user.mkdir()
-    (user / "rgbw.json").write_text(json.dumps({"type": "rgbw", "channels": [{"id": "w"}]}), encoding="utf-8")
+    (user / "par.json").write_text(json.dumps({"type": "par", "channels": [{"id": "w"}]}), encoding="utf-8")
     loaded = templates.load_templates([ROOT / "templates", user])
-    assert loaded["rgbw"].footprint == 1 and loaded["rgb"].footprint == 3
+    assert loaded["par"].footprint == 1 and set(loaded) == {"layout", "channels", "par"}
 
 
 def test_shipped_config_is_valid_for_the_schema():
@@ -47,14 +59,16 @@ def test_shipped_config_is_valid_for_the_schema():
     jsonschema.validate(shipped, s)
     def with_devices(devices):
         return {"ports": [{**shipped["ports"][0], "devices": devices}]}
-    jsonschema.validate(with_devices([{"name": "Фасад", "type": "rgbw", "address": 0, "count": 40},
-                                      {"name": "Logo", "type": "dimmer", "id": "logo_main"}]), s)
+    jsonschema.validate(with_devices([{"name": "Фасад", "type": "layout", "layout": "dRGBW", "address": 0, "count": 40},
+                                      {"name": "Logo", "type": "layout", "layout": "d", "bits": 16, "id": "logo_main"}]), s)
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(with_devices([{"name": "x", "id": "Bad", "type": "rgbw"}]), s)
+        jsonschema.validate(with_devices([{"name": "x", "id": "Bad", "type": "layout"}]), s)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(with_devices([{"name": "x", "type": "layout", "layout": "rgbx"}]), s)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(with_devices([{"name": "x", "type": "nope"}]), s)
     with pytest.raises(jsonschema.ValidationError):                  # a name is required, an id is not
-        jsonschema.validate(with_devices([{"type": "rgbw"}]), s)
+        jsonschema.validate(with_devices([{"type": "layout"}]), s)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({"ports": []}, s)
 
@@ -63,11 +77,12 @@ def test_schema_lists_template_types_with_titles_and_translations():
     s = schema.build_schema(TEMPLATES)
     port = s["properties"]["ports"]["items"]
     dev = port["properties"]["devices"]["items"]["properties"]["type"]
-    assert dev["enum"] == ["channels", "dimmer", "rgb", "grb", "rgbw", "grbw", "drgb", "drgbw", "cct", "rgbcct"]
-    chans = port["properties"]["devices"]["items"]["properties"]["channels"]
-    assert chans["options"]["dependencies"] == {"type": ["channels"]} and chans["default"] == 1
-    assert dev["options"]["enum_titles"][dev["enum"].index("rgbw")] == "RGBW (4 ch)"
-    assert s["translations"]["ru"]["RGBW (4 ch)"] == "RGBW (4 канала)"
+    assert dev["enum"] == ["layout", "channels"] and dev["options"]["enum_titles"] == ["Layout", "Channels"]
+    props = port["properties"]["devices"]["items"]["properties"]
+    assert props["channels"]["options"]["dependencies"] == {"type": ["channels"]}
+    assert props["layout"]["options"]["dependencies"] == {"type": ["layout"]} and props["layout"]["default"] == "rgbw"
+    assert props["bits"]["enum"] == [8, 16]
+    assert s["translations"]["ru"]["Layout"] == "Раскладка"
     assert s["configFile"] == {"path": "/etc/wb-mqtt-dmx.conf", "service": "wb-mqtt-dmx"}
     adv = port["properties"]["settings"]["properties"]["advanced"]
     assert port["title"] == "Port" and s["translations"]["ru"]["Ports"] == "Порты"
