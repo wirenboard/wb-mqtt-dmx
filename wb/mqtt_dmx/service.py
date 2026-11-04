@@ -11,6 +11,10 @@ Values are numbers and enums with translated titles, so the web UI shows them in
 A value written to a control goes straight into the port's frame buffer; the frame thread streams
 the buffer at the port's rate. Channel values are saved to STATE_PATH (at most once a second) and
 restored on start when the port says so.
+
+A port can also take its universe from the network (Art-Net / sACN, see netin.py): while a console
+sends, its frames are output, the controls follow them a few times a second and the port's `source`
+control names the console; when it stops, the MQTT values are back.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from typing import Any, Callable, Optional, Union
 from .config import Device, Group, Port, address_map
 from .controls import Control, build_controls, render
 from .dmx_port import DmxPort, DmxPortError
+from .netin import Binding, NetReceiver
 from .sender import FrameSender, Universe
 
 LOG = logging.getLogger("wb-mqtt-dmx")
@@ -46,6 +51,8 @@ WB_MQTT_SERIAL_CONF = Path("/etc/wb-mqtt-serial.conf")
 STATE_PATH = Path("/var/lib/wb-mqtt-dmx/state.json")
 STATE_SAVE_INTERVAL_S = 1.0
 STATS_INTERVAL_S = 5.0
+NET_PUBLISH_INTERVAL_S = 0.25  # how often control values follow a network source (40 fps would flood MQTT)
+NET_SOURCE_MQTT = "MQTT"
 BLACKOUT_FRAMES = 3           # zero frames sent before closing a port with on_stop = blackout
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
@@ -114,8 +121,10 @@ class PortRuntime:
         self.port = port
         self.universe = sender.universe
         self.sender = sender
-        self.values: dict[str, dict[str, Any]] = {}     # device_id -> control id -> value
+        self.values: dict[str, dict[str, Any]] = {}     # device_id -> control id -> value set over MQTT
         self.controls: dict[str, list[Control]] = {}    # device_id -> controls
+        self.net_source = ""                            # who owns the universe over the network, "" = nobody
+        self.shown: dict[str, dict[str, Any]] = {}      # values published while a network source is in charge
 
 
 class DmxService:
@@ -142,6 +151,10 @@ class DmxService:
                 rt.controls[target.device_id] = build_controls(target.template)
                 rt.values[target.device_id] = {c.id: c.default for c in rt.controls[target.device_id]}
         self._restore_state()
+        bindings = [Binding(rt.port.path, rt.port.artnet_universe, rt.port.sacn_universe)
+                    for rt in self._runtimes.values()
+                    if rt.port.artnet_universe is not None or rt.port.sacn_universe is not None]
+        self._net = NetReceiver(bindings, self._on_net_frame, self._on_net_source) if bindings else None
         self._client = client_factory(DRIVER)
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
@@ -173,12 +186,17 @@ class DmxService:
                     data[ch - 1] = v
             rt.universe.write(1, bytes(data))
             for target in [*rt.port.groups, *rt.port.devices]:
-                self._pull_values_from_universe(rt, target)
+                rt.values[target.device_id] = self._values_from_universe(rt, target)
 
     def _save_state(self) -> None:
         state = {}
         for rt in self._runtimes.values():
-            snapshot = rt.universe.snapshot()
+            snapshot = bytearray(rt.universe.snapshot())
+            if rt.net_source:
+                # A console is drawing: keep the MQTT values, not the console's frame
+                for device in rt.port.devices:
+                    data = render(rt.controls[device.device_id], rt.values[device.device_id], device.template.footprint)
+                    snapshot[device.address - 1:device.address - 1 + len(data)] = data
             state[rt.port.path] = {str(i + 1): v for i, v in enumerate(snapshot) if v}
         try:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,16 +218,57 @@ class DmxService:
 
     # ---- values <-> universe -----------------------------------------------------------------
 
-    def _pull_values_from_universe(self, rt: PortRuntime, target: Target) -> None:
-        """Device values from the buffer (after a restore); a group shows its first member."""
+    def _values_from_universe(self, rt: PortRuntime, target: Target) -> dict[str, Any]:
+        """Device values read back from the buffer (restore, network source); a group shows its first member."""
         dev = target.members[0] if isinstance(target, Group) else target
         read = {off: rt.universe.get(dev.address + off) for off in range(target.template.footprint)}
-        for control in rt.controls[target.device_id]:
-            rt.values[target.device_id][control.id] = control.value_from(read)
+        return {control.id: control.value_from(read) for control in rt.controls[target.device_id]}
 
     def _render(self, rt: PortRuntime, device: Device) -> None:
         data = render(rt.controls[device.device_id], rt.values[device.device_id], device.template.footprint)
         rt.universe.write(device.address, data)
+
+    # ---- network sources (Art-Net / sACN) ----------------------------------------------------
+
+    def _on_net_frame(self, path: str, slots: bytes) -> None:
+        rt = self._runtimes.get(path)
+        if rt is not None:
+            rt.universe.write(1, slots)
+
+    def _on_net_source(self, path: str, source: str) -> None:
+        """The source in charge of a port changed; "" means released: back to the MQTT values."""
+        with self._lock:
+            rt = self._runtimes.get(path)
+            if rt is None:
+                return
+            rt.net_source = source
+            LOG.info("%s: %s", path, f"network source {source}" if source else "network source gone, MQTT values back")
+            if not source:
+                for device in rt.port.devices:
+                    self._render(rt, device)
+                for device_id, values in rt.values.items():
+                    for cid, value in values.items():
+                        self._pub(f"/devices/{device_id}/controls/{cid}", str(value))
+                rt.shown = {}
+            self._publish_port_stats()
+
+    def _publish_net_values(self) -> None:
+        """Let the controls follow a network source, a few times a second and only what changed."""
+        with self._lock:
+            for rt in self._runtimes.values():
+                if not rt.net_source:
+                    continue
+                for target in [*rt.port.groups, *rt.port.devices]:
+                    new = self._values_from_universe(rt, target)
+                    old = rt.shown.get(target.device_id, rt.values[target.device_id])
+                    for cid, value in new.items():
+                        if old.get(cid) != value:
+                            self._pub(f"/devices/{target.device_id}/controls/{cid}", str(value))
+                    rt.shown[target.device_id] = new
+
+    def _net_publish_loop(self) -> None:
+        while not self._stop.wait(NET_PUBLISH_INTERVAL_S):
+            self._publish_net_values()
 
     # ---- MQTT publishing ---------------------------------------------------------------------
 
@@ -240,6 +299,8 @@ class DmxService:
                            "title": {"en": f"{name}: error", "ru": f"{name}: ошибка"}},
             f"{k}_map": {"type": "text", "readonly": True,
                          "title": {"en": f"{name}: DMX addresses", "ru": f"{name}: адреса DMX"}},
+            f"{k}_source": {"type": "text", "readonly": True,
+                            "title": {"en": f"{name}: source", "ru": f"{name}: источник"}},
         }
 
     def _port_values(self, port: Port) -> dict[str, str]:
@@ -247,8 +308,12 @@ class DmxService:
         rt = self._runtimes.get(port.path)
         fps = rt.sender.measured_fps if rt is not None and rt.sender.running else 0.0
         late = rt.sender.late_frames if rt is not None else 0
+        source = ""
+        if self._net is not None:
+            source = self._net.error or (self._net.source_text(port.path) if rt is not None and rt.net_source else "")
         return {f"{port.key}_state": state, f"{port.key}_fps": f"{fps:.1f}", f"{port.key}_late": str(late),
-                f"{port.key}_error": error, f"{port.key}_map": address_map(port) or "-"}
+                f"{port.key}_error": error, f"{port.key}_map": address_map(port) or "-",
+                f"{port.key}_source": source or NET_SOURCE_MQTT}
 
     def _publish_service_device(self) -> None:
         dev = f"/devices/{SERVICE_DEVICE}"
@@ -415,7 +480,12 @@ class DmxService:
                 time.sleep(rt.sender.period / len(enabled))   # stagger the grids, see docs/hardware_results.md
         saver = threading.Thread(target=self._state_saver_loop, name="dmx-state", daemon=True)
         saver.start()
+        if self._net is not None:
+            self._net.start()
+            threading.Thread(target=self._net_publish_loop, name="dmx-net-publish", daemon=True).start()
         self._stop.wait()
+        if self._net is not None:
+            self._net.stop()
         self._save_state()               # before a blackout, so a restore brings the light back
         for rt in enabled:
             if rt.port.on_stop == "blackout" and rt.sender.running:

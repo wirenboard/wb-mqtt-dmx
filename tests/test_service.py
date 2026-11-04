@@ -5,6 +5,7 @@ from pathlib import Path
 
 from wb.mqtt_dmx import templates
 from wb.mqtt_dmx.config import load_config
+from wb.mqtt_dmx.netin import Frame
 from wb.mqtt_dmx.service import SERVICE_DEVICE, CheckedPort, DmxService, serial_port_conflict
 
 ROOT = Path(__file__).parent.parent
@@ -33,10 +34,10 @@ class FakeClient:
         pass
 
 
-def make(cfg, tmp_path, enabled=True):
+def make(cfg, tmp_path, enabled=True, network=None):
     cfg = {"ports": [{"settings": {"enabled": enabled, "path": "/dev/ttyRS485-2", "name": "Фасад", "refresh_hz": 40,
                                    "on_start": "restore", "on_stop": "hold",
-                                   "advanced": {"slots": 512}},
+                                   "network": network or {}, "advanced": {"slots": 512}},
                       "devices": cfg}]}
     ports = load_config(cfg, TEMPLATES)
     svc = DmxService(ports, client_factory=FakeClient, serial_conf=tmp_path / "serial.conf",
@@ -100,6 +101,36 @@ def test_state_is_saved_and_restored(tmp_path):
     assert t2["/devices/dmx_tochnyy/controls/dimmer"] == "65535" and t2["/devices/dmx_tochnyy/controls/white"] == "258"
     assert json.loads(t2["/devices/dmx_tochnyy/controls/dimmer/meta"])["max"] == 65535
     assert json.loads(t2["/devices/dmx_dym/controls/dmx/meta"])["title"]["ru"] == "Каналы"
+
+
+def test_network_source_takes_over_and_releases(tmp_path):
+    devices = [{"name": "Пролёт", "layout": "rgbw", "count": 2}, {"name": "Логотип", "layout": "d"}]
+    svc, t = make(devices, tmp_path, network={"artnet": True, "artnet_universe": 5})
+    port = "/dev/ttyRS485-2"
+    assert svc._net is not None and svc._net._bindings[0].artnet == 5 and svc._net._bindings[0].sacn is None
+    assert t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2_source"] == "MQTT"
+    svc.handle_write("dmx_prolet1", "red", "10")
+    # a console sends: its frame is output, the controls follow it a few times a second
+    frame = Frame("artnet", 5, bytes([1, 2, 3, 4, 5, 6, 7, 8, 9]))
+    assert svc._net._sources[port].offer(frame, "10.0.0.1") == (True, True)
+    svc._on_net_frame(port, frame.slots)
+    svc._on_net_source(port, svc._net.source_text(port))
+    assert t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2_source"] == "Art-Net 10.0.0.1 · 0 fps"
+    assert svc._runtimes[port].universe.get(1) == 1
+    svc._publish_net_values()
+    assert t["/devices/dmx_prolet1/controls/red"] == "1" and t["/devices/dmx_prolet2/controls/white"] == "8"
+    assert t["/devices/dmx_prolet/controls/green"] == "2" and t["/devices/dmx_logotip/controls/dimmer"] == "9"
+    # MQTT writes are kept aside; the saved state holds them, not the console's frame
+    svc.handle_write("dmx_logotip", "dimmer", "77")
+    svc._save_state()
+    assert json.loads((tmp_path / "state.json").read_text())[port]["9"] == 77
+    assert json.loads((tmp_path / "state.json").read_text())[port]["1"] == 10
+    # the console stops: MQTT values are back on the line and in the controls
+    svc._on_net_source(port, "")
+    assert t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2_source"] == "MQTT"
+    assert svc._runtimes[port].universe.get(1) == 10 and svc._runtimes[port].universe.get(9) == 77
+    assert t["/devices/dmx_prolet1/controls/red"] == "10" and t["/devices/dmx_logotip/controls/dimmer"] == "77"
+    assert t["/devices/dmx_prolet2/controls/white"] == "0"
 
 
 def test_disabled_port_shows_in_status_without_devices(tmp_path):

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .ids import id_from_name, unique_id
+from .netin import ARTNET_MAX_UNIVERSE, SACN_MAX_UNIVERSE
 from .templates import LAYOUT_TYPE, Template, TemplateError, channels_template, layout_template
 
 DEVICE_PREFIX = "dmx_"
@@ -75,6 +76,8 @@ class Port:
     break_us: int
     mab_us: int
     de_via_rts: bool
+    artnet_universe: int | None = None   # network input, None = off
+    sacn_universe: int | None = None
     devices: list[Device] = field(default_factory=list)
     groups: list[Group] = field(default_factory=list)
 
@@ -115,12 +118,18 @@ def _port(entry: dict[str, Any], n: int) -> Port:
     de = str(adv.get("de_control") or "rts")
     if de not in ("rts", "none"):
         raise ConfigError(f"{where}: de_control must be rts or none")
+    net = settings.get("network") or {}
+    if not isinstance(net, dict):
+        raise ConfigError(f"{where}: network must be an object")
+    # Default universes follow the port's position: Art-Net 0, 1, …; sACN 1, 2, …
+    artnet = _int(net, "artnet_universe", n - 1, 0, ARTNET_MAX_UNIVERSE, where) if net.get("artnet") else None
+    sacn = _int(net, "sacn_universe", n, 1, SACN_MAX_UNIVERSE, where) if net.get("sacn") else None
     return Port(
         path=path, name=str(settings.get("name") or path), enabled=bool(settings.get("enabled", False)),
         refresh_hz=_int(settings, "refresh_hz", 40, 1, 44, where), on_start=on_start, on_stop=on_stop,
         slots=_int(adv, "slots", UNIVERSE_SIZE, 24, UNIVERSE_SIZE, where),
         break_us=_int(adv, "break_us", 176, 88, 1000, where), mab_us=_int(adv, "mab_us", 20, 8, 1000, where),
-        de_via_rts=de == "rts",
+        de_via_rts=de == "rts", artnet_universe=artnet, sacn_universe=sacn,
     )
 
 
@@ -138,6 +147,12 @@ def load_config(config: dict[str, Any], templates: dict[str, Template]) -> list[
         port = _port(entry, n)
         if any(p.path == port.path for p in ports):
             raise ConfigError(f"port {port.path} is listed twice")
+        for other in ports:
+            if port.artnet_universe is not None and port.artnet_universe == other.artnet_universe:
+                raise ConfigError(f"ports {other.path} and {port.path} both receive Art-Net universe "
+                                  f"{port.artnet_universe}")
+            if port.sacn_universe is not None and port.sacn_universe == other.sacn_universe:
+                raise ConfigError(f"ports {other.path} and {port.path} both receive sACN universe {port.sacn_universe}")
         next_address = 1
         for k, dev in enumerate(entry.get("devices") or [], start=1):
             if not isinstance(dev, dict):

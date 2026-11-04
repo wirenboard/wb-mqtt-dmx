@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .netin import ARTNET_MAX_UNIVERSE, SACN_MAX_UNIVERSE
 from .templates import DEFAULT_LAYOUT, LAYOUT_RE, Template
 
 CONFIG_PATH = "/etc/wb-mqtt-dmx.conf"
@@ -30,6 +31,11 @@ ON_STOP_DESCRIPTION = ("What happens when the service stops. Hold: frames just s
                        "values until their own timeout. Blackout: all channels are set to 0 first.")
 DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
+NETWORK_DESCRIPTION = ("A lighting console or software (QLC+, MadMapper, …) can send this port's universe over the "
+                       "network. While it sends, its frames are output and the device controls show its values; "
+                       "2.5 s after it stops the port returns to the values set over MQTT. Off by default: anyone "
+                       "on the network could drive the lights. Art-Net port address 0–32767 (net·subnet·universe); "
+                       "sACN universe 1–63999, unicast or multicast.")
 DEVICES_DESCRIPTION = ("Layout: one letter per DMX channel in the device's order — d dimmer, r g b colour, w white, "
                        "a amber, u UV, c cold white, h warm white, s strobe, _ unused; e.g. dRGBW. Address 0 places the "
                        "device right after the previous one. Count above 1 gives N identical devices on consecutive "
@@ -67,6 +73,13 @@ RU = {
                          "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт N одинаковых приборов "
                          "на адресах подряд плюс групповое устройство для всех сразу. MQTT-идентификатор строится из "
                          "названия (Фасад → dmx_fasad); заполняйте его, только если нужен конкретный.",
+    "Network input": "Приём из сети", "Art-Net port address": "Адрес порта Art-Net",
+    "sACN universe": "Вселенная sACN",
+    NETWORK_DESCRIPTION: "Световой пульт или программа (QLC+, MadMapper, …) может присылать вселенную этого порта по "
+                         "сети. Пока она шлёт, на линию идут её кадры, а контролы приборов показывают её значения; "
+                         "через 2,5 с после остановки порт возвращается к значениям из MQTT. По умолчанию выключено: "
+                         "иначе светом может управлять любой в сети. Адрес порта Art-Net 0–32767 "
+                         "(net·subnet·universe); вселенная sACN 1–63999, unicast или multicast.",
     "Layout": "Раскладка", "Resolution": "Разрядность", "8 bit": "8 бит", "16 bit": "16 бит",
     "MQTT id": "MQTT-идентификатор", "Address": "Адрес", "Device": "Прибор", "Channels": "Каналов",
 }
@@ -90,6 +103,21 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
                            "options": {"enum_titles": ["RTS", "Kernel"], "grid_columns": 6}},
         },
     }
+    network = {
+        "type": "object", "title": "Network input", "propertyOrder": 50, "_format": "grid",
+        "description": NETWORK_DESCRIPTION,
+        "options": {"collapsed": True, "disable_edit_json": True, "disable_properties": True},
+        "properties": {
+            "artnet": {"type": "boolean", "title": "Art-Net", "default": False, "_format": "checkbox",
+                       "propertyOrder": 1, "options": {"grid_columns": 3}},
+            "artnet_universe": _int("Art-Net port address", 0, ARTNET_MAX_UNIVERSE, 0, 2,
+                                    options={"grid_columns": 3, "dependencies": {"artnet": True}}),
+            "sacn": {"type": "boolean", "title": "sACN", "default": False, "_format": "checkbox",
+                     "propertyOrder": 3, "options": {"grid_columns": 3}},
+            "sacn_universe": _int("sACN universe", 1, SACN_MAX_UNIVERSE, 1, 4,
+                                  options={"grid_columns": 3, "dependencies": {"sacn": True}}),
+        },
+    }
     settings = {
         "type": "object", "title": "Port settings", "propertyOrder": 1, "_format": "grid",
         # Collapsed once the port is set up; the header keeps the essentials visible.
@@ -111,6 +139,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "on_stop": {"type": "string", "title": "On stop", "enum": ["hold", "blackout"], "default": "hold",
                         "propertyOrder": 5, "description": ON_STOP_DESCRIPTION,
                         "options": {"enum_titles": ["Hold last frame", "Blackout"], "grid_columns": 4}},
+            "network": network,
             "advanced": advanced,
         },
         "required": ["path"],
