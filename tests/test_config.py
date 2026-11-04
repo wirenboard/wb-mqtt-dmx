@@ -70,7 +70,8 @@ def test_layout_devices_and_16_bit():
     cfg["ports"][0]["devices"].pop()
     (p,) = load_config(cfg, TEMPLATES)
     assert [(d.id, d.address, d.template.footprint) for d in p.devices] == [("par", 1, 5), ("dimmer", 6, 2)]
-    assert p.devices[0].template.rgb == ("red", "green", "blue") and p.devices[1].template.channels[0].bits == 16
+    assert [c.id for c in p.devices[0].template.channels] == ["dimmer", "red", "green", "blue", "white"]
+    assert p.devices[1].template.channels[0].bits == 16
     with pytest.raises(ConfigError, match="bits must be 8 or 16"):
         load_config({"ports": [port(devices=[dev("x", bits=12)])]}, TEMPLATES)
 

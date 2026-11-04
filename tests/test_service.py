@@ -50,10 +50,9 @@ def test_devices_and_groups_are_published(tmp_path):
     assert json.loads(t[f"/devices/{SERVICE_DEVICE}/meta"])["driver"] == "wb-mqtt-dmx"
     assert t[f"/devices/{SERVICE_DEVICE}/controls/rs485_2_map"] == "Пролёт: 1-8 (2 × 4); Логотип: 9"
     assert t["/devices/dmx_prolet/meta"] and t["/devices/dmx_prolet1/meta"] and t["/devices/dmx_logotip/meta"]
-    assert json.loads(t["/devices/dmx_prolet1/controls/color/meta"])["type"] == "rgb"
-    assert t["/devices/dmx_prolet1/controls/color"] == "0;0;0"
-    assert json.loads(t["/devices/dmx_prolet1/controls/white/meta"])["title"] == {"en": "White", "ru": "Белый"}
-    assert "/devices/dmx_prolet1/controls/red" not in t
+    assert json.loads(t["/devices/dmx_prolet1/controls/red/meta"])["title"] == {"en": "Red", "ru": "Красный"}
+    assert [t[f"/devices/dmx_prolet1/controls/{c}"] for c in ("red", "green", "blue", "white")] == ["0"] * 4
+    assert "/devices/dmx_prolet1/controls/color" not in t
     assert t["/devices/dmx_prolet2/controls/dmx"] == "DMX 5–8"
     assert json.loads(t["/devices/dmx_prolet2/controls/dmx/meta"])["title"]["ru"] == "Раскладка"
     assert t["/devices/dmx_logotip/controls/dmx"] == "DMX 9"
@@ -68,19 +67,18 @@ def test_devices_and_groups_are_published(tmp_path):
 def test_writes_land_in_the_frame_buffer_and_groups_fan_out(tmp_path):
     svc, t = make([{"name": "Пролёт", "layout": "rgbw", "count": 2}, {"name": "Логотип", "layout": "d"}], tmp_path)
     universe = svc._runtimes["/dev/ttyRS485-2"].universe
-    assert svc.handle_write("dmx_prolet2", "color", "10;200;30")
-    assert universe.snapshot()[:9] == bytes([0, 0, 0, 0, 10, 200, 30, 0, 0])
-    assert t["/devices/dmx_prolet2/controls/color"] == "10;200;30"
+    assert svc.handle_write("dmx_prolet2", "green", "200")
+    assert universe.snapshot()[:9] == bytes([0, 0, 0, 0, 0, 200, 0, 0, 0])
+    assert t["/devices/dmx_prolet2/controls/green"] == "200"
     assert svc.handle_write("dmx_prolet", "white", "17")             # the group writes both members
     assert universe.snapshot()[3] == 17 and universe.snapshot()[7] == 17
     assert t["/devices/dmx_prolet1/controls/white"] == "17"
     assert svc.handle_write("dmx_logotip", "dimmer", "999") and universe.get(9) == 255   # clamped
-    assert not svc.handle_write("dmx_prolet2", "color", "1;2")
     assert not svc.handle_write("dmx_nope", "dimmer", "1")
     assert not svc.handle_write("dmx_logotip", "nope", "1")
     assert not svc.handle_write("dmx_logotip", "dimmer", "abc")
     assert svc.handle_write(SERVICE_DEVICE, "blackout", "1")
-    assert universe.snapshot() == bytes(512) and t["/devices/dmx_prolet2/controls/color"] == "0;0;0"
+    assert universe.snapshot() == bytes(512) and t["/devices/dmx_prolet2/controls/green"] == "0"
 
 
 def test_state_is_saved_and_restored(tmp_path):
@@ -88,7 +86,8 @@ def test_state_is_saved_and_restored(tmp_path):
                {"name": "Дым", "type": "channels", "channels": 2}, {"name": "Точный", "layout": "dw", "bits": 16}]
     svc, _ = make(devices, tmp_path)
     svc.handle_write("dmx_logotip", "dimmer", "123")
-    svc.handle_write("dmx_par", "color", "1;2;3")
+    for cid, v in (("red", "1"), ("green", "2"), ("blue", "3")):
+        svc.handle_write("dmx_par", cid, v)
     svc.handle_write("dmx_dym", "ch2", "9")
     assert svc.handle_write("dmx_tochnyy", "dimmer", "65535") and svc.handle_write("dmx_tochnyy", "white", "258")
     svc._save_state()
@@ -97,7 +96,7 @@ def test_state_is_saved_and_restored(tmp_path):
     svc2, t2 = make(devices, tmp_path)
     assert svc2._runtimes["/dev/ttyRS485-2"].universe.get(1) == 123
     assert t2["/devices/dmx_logotip/controls/dimmer"] == "123"
-    assert t2["/devices/dmx_par/controls/color"] == "1;2;3" and t2["/devices/dmx_dym/controls/ch2"] == "9"
+    assert t2["/devices/dmx_par/controls/blue"] == "3" and t2["/devices/dmx_dym/controls/ch2"] == "9"
     assert t2["/devices/dmx_tochnyy/controls/dimmer"] == "65535" and t2["/devices/dmx_tochnyy/controls/white"] == "258"
     assert json.loads(t2["/devices/dmx_tochnyy/controls/dimmer/meta"])["max"] == 65535
     assert json.loads(t2["/devices/dmx_dym/controls/dmx/meta"])["title"]["ru"] == "Каналы"

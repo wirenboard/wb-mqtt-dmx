@@ -11,7 +11,7 @@ Three sources, all producing the same `Template`:
   wheels); the package may ship some, a user adds their own in /etc/wb-mqtt-dmx.conf.d/templates.
   Also the target format of a future OFL / GDTF converter. A template file:
 
-    {"type": "my-par", "title": {"en": "My PAR", "ru": "Мой PAR"}, "rgb": ["red", "green", "blue"],
+    {"type": "my-par", "title": {"en": "My PAR", "ru": "Мой PAR"},
      "channels": [{"id": "red", "title": {"en": "Red", "ru": "Красный"}, "default": 0, "bits": 8}, …]}
 """
 
@@ -21,7 +21,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 BASE_DIR = Path("/usr/share/wb-mqtt-dmx/templates")
 USER_DIR = Path("/etc/wb-mqtt-dmx.conf.d/templates")
@@ -78,7 +78,6 @@ class Template:
     title: dict[str, str]
     channels: list[Channel] = field(default_factory=list)
     source: str = ""                 # file the template came from, for messages
-    rgb: Optional[tuple[str, str, str]] = None   # channel ids folded into one colour control
     dynamic: bool = False            # built in; shape comes from the device entry
 
     @property
@@ -132,12 +131,7 @@ def parse_template(doc: Any, source: str = "") -> Template:
             raise TemplateError(f"{where}: default out of range")
         channels.append(Channel(cid, _title(c.get("title"), cid, where), offset, default, bits))
         next_offset = offset + (2 if bits == 16 else 1)
-    rgb = doc.get("rgb")
-    if rgb is not None:
-        if not isinstance(rgb, list) or len(rgb) != 3 or not all(str(c) in seen for c in rgb):
-            raise TemplateError(f"{source}: rgb must list three channel ids of this template")
-        rgb = tuple(str(c) for c in rgb)
-    return Template(key, _title(doc.get("title"), key, source), channels, source, rgb)
+    return Template(key, _title(doc.get("title"), key, source), channels, source)
 
 
 def layout_template(layout: str, bits: int = 8) -> Template:
@@ -161,8 +155,7 @@ def layout_template(layout: str, bits: int = 8) -> Template:
         offset += width
     if not channels:
         raise TemplateError(f"layout {layout!r}: at least one channel must not be '_'")
-    rgb = ("red", "green", "blue") if all(k in counts for k in ("red", "green", "blue")) else None
-    return Template(LAYOUT_TYPE, LAYOUT_TITLE, channels, "layout", rgb, dynamic=True)
+    return Template(LAYOUT_TYPE, LAYOUT_TITLE, channels, "layout", dynamic=True)
 
 
 def channels_template(count: int) -> Template:

@@ -12,14 +12,13 @@ TEMPLATES = templates.load_templates([ROOT / "templates"])
 def test_layout_strings_become_templates():
     t = templates.layout_template("dRGBW")
     assert [(c.id, c.offset) for c in t.channels] == [("dimmer", 0), ("red", 1), ("green", 2), ("blue", 3), ("white", 4)]
-    assert t.footprint == 5 and t.rgb == ("red", "green", "blue") and t.title["ru"] == "Раскладка"
+    assert t.footprint == 5 and t.title["ru"] == "Раскладка"
     t16 = templates.layout_template("ch", 16)
     assert [(c.id, c.offset, c.bits) for c in t16.channels] == [("cold", 0, 16), ("warm", 2, 16)] and t16.footprint == 4
     skip = templates.layout_template("r_g_b")
     assert [c.offset for c in skip.channels] == [0, 2, 4] and skip.footprint == 5
     twice = templates.layout_template("ww")
     assert [c.id for c in twice.channels] == ["white", "white_2"] and twice.channels[1].title["ru"] == "Белый 2"
-    assert templates.layout_template("d").rgb is None
     for bad in ("", "xyz", "___", "r" * 65):
         with pytest.raises(templates.TemplateError):
             templates.layout_template(bad)
@@ -36,8 +35,6 @@ def test_template_offsets_and_errors():
         templates.parse_template({"type": "Bad Type", "channels": [{"id": "a"}]})
     with pytest.raises(templates.TemplateError, match="non-empty"):
         templates.parse_template({"type": "x", "channels": []})
-    with pytest.raises(templates.TemplateError, match="rgb must list three"):
-        templates.parse_template({"type": "x", "rgb": ["a", "b"], "channels": [{"id": "a"}, {"id": "b"}]})
     with pytest.raises(templates.TemplateError, match="built in"):
         templates.parse_template({"type": "layout", "channels": [{"id": "a"}]})
     wide = templates.parse_template({"type": "x", "channels": [{"id": "a", "bits": 16}, {"id": "b"}]})
