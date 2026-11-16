@@ -1,6 +1,8 @@
 #!/usr/bin/make -f
 
 export PYBUILD_BEFORE_TEST=cd {dir} && {interpreter} setup.py --quiet egg_info --egg-base {build_dir}
+# the tests read the shipped config and templates, so run them from the source tree, not from the build copy
+export PYBUILD_TEST_ARGS={dir}/tests
 
 %:
 	dh $@ --with python3 --buildsystem=pybuild
