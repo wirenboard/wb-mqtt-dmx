@@ -2,7 +2,7 @@
 
 While a source sends, its frames go straight into the port's buffer and win over MQTT writes; after
 SOURCE_TIMEOUT_S of silence (or an sACN stream-terminated packet) the port goes back to its own
-values. Among several sources the highest priority wins: sACN carries one (0..200, default 100),
+values. Consoles send only on change plus a keepalive, so the last frame is kept meanwhile. Among several sources the highest priority wins: sACN carries one (0..200, default 100),
 Art-Net has none and counts as ARTNET_PRIORITY; equal priorities — the latest sender wins (LTP).
 
 Both protocols are plain UDP frames, one universe per packet:
@@ -39,7 +39,9 @@ ACN_ID = b"ASC-E1.17\0\0\0"
 VECTOR_ROOT_DATA, VECTOR_FRAMING_DATA, VECTOR_DMP_SET = 4, 2, 2
 SACN_OPT_TERMINATED = 0x40
 SACN_OPT_PREVIEW = 0x80
-SOURCE_TIMEOUT_S = 2.5
+# A silent source is dropped after this. E1.31 says 2.5 s; Art-Net consoles only refresh an
+# unchanged universe every 2–4 s (QLC+: 2 s), so Art-Net gets the spec's 4 s plus a margin.
+SOURCE_TIMEOUT_S = {"artnet": 5.0, "sacn": 2.5}
 FPS_WINDOW_S = 2.0
 POLL_S = 0.5
 MAX_SLOTS = 512
@@ -175,9 +177,9 @@ class Source:
 class Sources:
     """The network sources seen on one port's universe and which of them is in charge."""
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic, timeout: float = SOURCE_TIMEOUT_S) -> None:
+    def __init__(self, clock: Callable[[], float] = time.monotonic, timeout: Optional[float] = None) -> None:
         self._clock = clock
-        self._timeout = timeout
+        self._timeout = timeout                 # None: per protocol, see SOURCE_TIMEOUT_S
         self._sources: dict[tuple[str, str], Source] = {}
         self.active: Optional[Source] = None
 
@@ -204,7 +206,7 @@ class Sources:
         """Drop silent sources; True when the source in charge changed (usually: released)."""
         now = self._clock()
         for key, src in list(self._sources.items()):
-            if now - src.last_seen > self._timeout:
+            if now - src.last_seen > (self._timeout or SOURCE_TIMEOUT_S[src.proto]):
                 del self._sources[key]
         return self._elect()
 

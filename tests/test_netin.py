@@ -63,6 +63,18 @@ def test_sources_priority_timeout_and_termination():
     assert s.expire() is False
 
 
+def test_default_timeouts_follow_the_protocol():
+    now = [0.0]
+    s = Sources(clock=lambda: now[0])
+    s.offer(Frame("artnet", 1, b"\x01"), "10.0.0.1")
+    s.offer(Frame("sacn", 2, b"\x01", priority=90), "10.0.0.2")
+    now[0] = 3.0                                   # a QLC+ keepalive comes every 2 s: Art-Net must survive this
+    assert s.expire() is False and s.active.proto == "artnet"
+    assert ("sacn", "10.0.0.2") not in s._sources  # E1.31: 2.5 s
+    now[0] = 5.5
+    assert s.expire() is True and s.active is None
+
+
 def test_sources_measure_fps():
     now = [0.0]
     s = Sources(clock=lambda: now[0])

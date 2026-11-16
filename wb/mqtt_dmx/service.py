@@ -207,12 +207,15 @@ class DmxService:
             LOG.warning("cannot save the state to %s: %s", self._state_path, e)
 
     def _state_saver_loop(self) -> None:
+        last_stats = time.monotonic()
         while not self._stop.is_set():
-            if self._state_dirty.wait(timeout=STATS_INTERVAL_S):
+            if self._state_dirty.wait(timeout=1.0):
                 self._state_dirty.clear()
                 time.sleep(STATE_SAVE_INTERVAL_S)       # coalesce a slider drag into one write
                 self._save_state()
-            else:
+            # On its own clock: a rule writing every few seconds must not starve the stats
+            if time.monotonic() - last_stats >= STATS_INTERVAL_S:
+                last_stats = time.monotonic()
                 with self._lock:
                     self._publish_port_stats()
 

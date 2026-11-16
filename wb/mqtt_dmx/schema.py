@@ -33,7 +33,7 @@ DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through 
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
 NETWORK_DESCRIPTION = ("A lighting console or software (QLC+, MadMapper, …) can send this port's universe over the "
                        "network. While it sends, its frames are output and the device controls show its values; "
-                       "2.5 s after it stops the port returns to the values set over MQTT. Off by default: anyone "
+                       "a few seconds after it stops the port returns to the values set over MQTT. Off by default: anyone "
                        "on the network could drive the lights. Art-Net port address 0–32767 (net·subnet·universe); "
                        "sACN universe 1–63999, unicast or multicast.")
 DEVICES_DESCRIPTION = ("Layout: one letter per DMX channel in the device's order — d dimmer, r g b colour, w white, "
@@ -77,7 +77,7 @@ RU = {
     "sACN universe": "Вселенная sACN",
     NETWORK_DESCRIPTION: "Световой пульт или программа (QLC+, MadMapper, …) может присылать вселенную этого порта по "
                          "сети. Пока она шлёт, на линию идут её кадры, а контролы приборов показывают её значения; "
-                         "через 2,5 с после остановки порт возвращается к значениям из MQTT. По умолчанию выключено: "
+                         "через несколько секунд после остановки порт возвращается к значениям из MQTT. По умолчанию выключено: "
                          "иначе светом может управлять любой в сети. Адрес порта Art-Net 0–32767 "
                          "(net·subnet·universe); вселенная sACN 1–63999, unicast или multicast.",
     "Layout": "Раскладка", "Resolution": "Разрядность", "8 bit": "8 бит", "16 bit": "16 бит",
