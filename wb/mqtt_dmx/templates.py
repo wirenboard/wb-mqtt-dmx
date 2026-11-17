@@ -187,9 +187,8 @@ def parse_template(doc: Any, source: str = "") -> Template:
 def layout_template(layout: str, bits: int = 8, modes: str = "") -> Template:
     """A device described by a layout string, e.g. 'dRGBW' or 'rgb' (see the module docstring)."""
     layout = str(layout or "").strip()
-    ranges = parse_modes(modes)
-    if ranges and "m" not in layout.lower():
-        raise TemplateError("modes are set, but the layout has no m channel")
+    # Modes left over after the m was removed from the layout are not an error: nothing to apply them to
+    ranges = parse_modes(modes) if "m" in layout.lower() else []
     if ranges and bits != 8:
         raise TemplateError("modes need the 8-bit resolution")
     if not re.match(LAYOUT_RE, layout):

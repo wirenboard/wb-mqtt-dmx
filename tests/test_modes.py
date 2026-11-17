@@ -51,14 +51,18 @@ def test_mode_channel_is_a_drop_down_control():
     assert plain.meta(6)["type"] == "range" and plain.parse("60") == 60
 
 
-def test_modes_need_an_m_channel_and_8_bits():
-    with pytest.raises(templates.TemplateError, match="no m channel"):
-        templates.layout_template("drgbw", 8, MODES)
-    with pytest.raises(templates.TemplateError, match="8-bit"):
-        templates.layout_template("dm", 16, MODES)
+def test_modes_without_an_m_channel_are_ignored():
+    t = templates.layout_template("drgbw_s", 8, MODES)             # the m was removed, the modes text stayed
+    assert all(not c.ranges for c in t.channels) and t.footprint == 7
+    assert templates.layout_template("rgb", 8, "не разобрать").footprint == 3
     cfg = {"ports": [{"settings": {"path": "/dev/ttyRS485-2"},
                       "devices": [{"name": "Пар", "layout": "rgb", "modes": "0 Ручной"}]}]}
-    with pytest.raises(ConfigError, match="no m channel"):
+    (port,) = load_config(cfg, TEMPLATES)
+    assert [c.id for c in port.devices[0].template.channels] == ["red", "green", "blue"]
+    with pytest.raises(templates.TemplateError, match="8-bit"):
+        templates.layout_template("dm", 16, MODES)
+    cfg["ports"][0]["devices"][0].update(layout="rgbm", modes="5 Поздно")
+    with pytest.raises(ConfigError, match="start at 0"):
         load_config(cfg, TEMPLATES)
 
 
