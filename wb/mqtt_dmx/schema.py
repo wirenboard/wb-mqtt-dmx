@@ -37,7 +37,7 @@ NETWORK_DESCRIPTION = ("A lighting console or software (QLC+, MadMapper, …) ca
                        "on the network could drive the lights. Art-Net port address 0–32767 (net·subnet·universe); "
                        "sACN universe 1–63999, unicast or multicast.")
 DEVICES_DESCRIPTION = ("Layout: one letter per DMX channel in the device's order — d dimmer, r g b colour, w white, "
-                       "a amber, u UV, c cold white, h warm white, s strobe, _ unused; e.g. dRGBW. Address 0 places the "
+                       "a amber, u UV, c cold white, h warm white, s strobe, m mode (program channel), _ unused; e.g. dRGBW. Address 0 places the "
                        "device right after the previous one. Count above 1 gives N identical devices on consecutive "
                        "addresses plus a group device for all of them. The MQTT id is made from the name "
                        "(Фасад → dmx_fasad); fill it in only to pin a specific id.")
@@ -69,7 +69,7 @@ RU = {
     DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
                     "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
     DEVICES_DESCRIPTION: "Раскладка: по букве на DMX-канал в порядке прибора — d диммер, r g b цвет, w белый, "
-                         "a янтарный, u УФ, c холодный белый, h тёплый белый, s строб, _ не используется; например dRGBW. "
+                         "a янтарный, u УФ, c холодный белый, h тёплый белый, s строб, m режим (канал программ), _ не используется; например dRGBW. "
                          "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт N одинаковых приборов "
                          "на адресах подряд плюс групповое устройство для всех сразу. MQTT-идентификатор строится из "
                          "названия (Фасад → dmx_fasad); заполняйте его, только если нужен конкретный.",

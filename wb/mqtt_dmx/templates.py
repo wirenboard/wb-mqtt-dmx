@@ -4,8 +4,9 @@ Three sources, all producing the same `Template`:
 
 * **Layout string** (the default type, like Home Assistant's `channel_setup`): one letter per channel,
   `d` dimmer, `r` `g` `b` red/green/blue, `w` white, `a` amber, `u` UV, `c` cold white, `h` warm white,
-  `s` strobe, `_` an unused channel. `dRGBW` is a 5-channel decoder with a master dimmer. Case does
-  not matter. With 16-bit resolution every channel takes two DMX slots (coarse, fine).
+  `s` strobe, `m` mode (the program / function channel of a fixture, a plain 0–255 value), `_` an unused
+  channel. `dRGBW` is a 5-channel decoder with a master dimmer. Case does not matter. With 16-bit
+  resolution every channel takes two DMX slots (coarse, fine).
 * **Channels**: N plain channels ch1…chN, for anything else.
 * **JSON template files** for devices with named channels, modes and enum channels (strobe programs,
   wheels); the package may ship some, a user adds their own in /etc/wb-mqtt-dmx.conf.d/templates.
@@ -34,7 +35,7 @@ CHANNELS_TYPE = "channels"
 CHANNELS_TITLE = {"en": "Channels", "ru": "Каналы"}
 BUILTIN_TYPES = (LAYOUT_TYPE, CHANNELS_TYPE)
 DEFAULT_LAYOUT = "rgbw"
-LAYOUT_RE = r"^[dDrRgGbBwWaAuUcChHsS_]{1,64}$"
+LAYOUT_RE = r"^[dDrRgGbBwWaAuUcChHsSmM_]{1,64}$"
 
 # letter -> (control id, titles); the same letter twice gets _2, _3 …
 LAYOUT_LETTERS = {
@@ -48,6 +49,7 @@ LAYOUT_LETTERS = {
     "c": ("cold", {"en": "Cold white", "ru": "Холодный белый"}),
     "h": ("warm", {"en": "Warm white", "ru": "Тёплый белый"}),
     "s": ("strobe", {"en": "Strobe", "ru": "Строб"}),
+    "m": ("mode", {"en": "Mode", "ru": "Режим"}),
 }
 
 
@@ -139,7 +141,7 @@ def layout_template(layout: str, bits: int = 8) -> Template:
     """A device described by a layout string, e.g. 'dRGBW' or 'rgb' (see the module docstring)."""
     layout = str(layout or "").strip()
     if not re.match(LAYOUT_RE, layout):
-        raise TemplateError(f"layout {layout!r}: use the letters d r g b w a u c h s and _ (1..64 of them)")
+        raise TemplateError(f"layout {layout!r}: use the letters d r g b w a u c h s m and _ (1..64 of them)")
     if bits not in (8, 16):
         raise TemplateError("bits must be 8 or 16")
     channels: list[Channel] = []

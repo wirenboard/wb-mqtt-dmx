@@ -20,6 +20,8 @@ def test_layout_strings_become_templates():
     tail = templates.layout_template("drgb___")        # unused channels at the end still take addresses
     assert [c.id for c in tail.channels] == ["dimmer", "red", "green", "blue"] and tail.footprint == 7
     assert templates.layout_template("d_", 16).footprint == 4
+    par = templates.layout_template("drgbwms")           # a 7-channel PAR: dimmer, colour, white, mode, strobe
+    assert [c.id for c in par.channels][-2:] == ["mode", "strobe"] and par.channels[5].title["ru"] == "Режим"
     twice = templates.layout_template("ww")
     assert [c.id for c in twice.channels] == ["white", "white_2"] and twice.channels[1].title["ru"] == "Белый 2"
     for bad in ("", "xyz", "___", "r" * 65):
