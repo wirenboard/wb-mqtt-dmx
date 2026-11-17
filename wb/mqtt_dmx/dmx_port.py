@@ -40,10 +40,10 @@ MIN_MAB_US = 8
 SLOT_US = 44               # one slot on the wire: start bit, 8 data bits, 2 stop bits at 4 µs each
 MAX_SLOT_GAP_US = 1000
 # What a one-byte write() and the wake-up from a sleep take at the very least under SCHED_FIFO on the
-# controller (5 + 10 µs). Taking off only the minimum makes the pause on the wire never shorter than asked;
-# a typical one is longer by SLEEP_JITTER_US (scope: asked 50 µs, got 50…80 µs, 60 on average).
+# controller (5 + 10 µs). Taking off only the minimum keeps the pause on the wire at what was asked or more
+# (scope: asked 50 µs, median 53, 1 % under 46, a fifth around 110, 72 on average = SLEEP_JITTER_US extra).
 SLEEP_OVERHEAD_US = 15
-SLEEP_JITTER_US = 15
+SLEEP_JITTER_US = 20
 DRAIN_TIMEOUT_S = 0.1      # a 512-slot frame is 22.6 ms on the wire
 DRAIN_POLL_S = 0.0002
 
