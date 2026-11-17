@@ -39,9 +39,11 @@ MIN_BREAK_US = 88
 MIN_MAB_US = 8
 SLOT_US = 44               # one slot on the wire: start bit, 8 data bits, 2 stop bits at 4 µs each
 MAX_SLOT_GAP_US = 1000
-# A one-byte write() followed by a sleep of zero already takes this long under SCHED_FIFO on the controller
-# (measured 41–50 µs): about one slot, so the sleep asked for is close to the pause itself.
-SLEEP_OVERHEAD_US = 45
+# What a one-byte write() and the wake-up from a sleep take at the very least under SCHED_FIFO on the
+# controller (5 + 10 µs). Taking off only the minimum makes the pause on the wire never shorter than asked;
+# a typical one is longer by SLEEP_JITTER_US (scope: asked 50 µs, got 50…80 µs, 60 on average).
+SLEEP_OVERHEAD_US = 15
+SLEEP_JITTER_US = 15
 DRAIN_TIMEOUT_S = 0.1      # a 512-slot frame is 22.6 ms on the wire
 DRAIN_POLL_S = 0.0002
 
@@ -207,7 +209,8 @@ class DmxPort:
 
     def frame_time_s(self, slot_count: int) -> float:
         """How long a frame of that many slots stays on the wire."""
-        return (self.break_us + self.mab_us + (slot_count + 1) * (SLOT_US + self.slot_gap_us)) / 1e6
+        slot_us = SLOT_US + (self.slot_gap_us + SLEEP_JITTER_US if self.slot_gap_us else 0)
+        return (self.break_us + self.mab_us + (slot_count + 1) * slot_us) / 1e6
 
     def send_frame(self, slots: bytes) -> None:
         """BREAK, MAB, start code and the slots; waits for the previous frame to leave the UART."""

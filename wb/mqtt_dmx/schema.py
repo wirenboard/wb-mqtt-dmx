@@ -34,7 +34,8 @@ DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through 
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
 SLOT_GAP_DESCRIPTION = ("0: channels go back to back, as ordinary consoles send them. A pause helps fixtures that "
                         "cannot keep up with the data and flicker. The frame gets longer, so the refresh rate drops: "
-                        "50 µs at 512 channels gives about 19 Hz. The pause is approximate, never shorter.")
+                        "50 µs at 512 channels gives about 16 Hz. The real pause is never shorter than set, "
+                        "usually 10–30 µs longer.")
 NETWORK_DESCRIPTION = ("A lighting console or software (QLC+, MadMapper, …) can send this port's universe over the "
                        "network. While it sends, its frames are output and the device controls show its values; "
                        "a few seconds after it stops the port returns to the values set over MQTT. Off by default: anyone "
@@ -64,7 +65,8 @@ RU = {
     "Pause between channels, µs": "Пауза между каналами, мкс",
     SLOT_GAP_DESCRIPTION: "0 — каналы идут вплотную, как у обычных пультов. Пауза помогает приборам, которые не "
                           "успевают принимать данные и мерцают. Кадр становится длиннее, поэтому частота падает: "
-                          "50 мкс при 512 каналах дают около 19 Гц. Пауза приблизительная.",
+                          "50 мкс при 512 каналах дают около 16 Гц. Настоящая пауза не короче заданной, обычно "
+                          "длиннее на 10–30 мкс.",
     "RTS": "RTS", "Kernel": "Ядро",
     "Devices": "Приборы", "Device id": "Идентификатор", "Type": "Тип", "Start address": "Стартовый адрес",
     "Count": "Количество",

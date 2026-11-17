@@ -86,8 +86,10 @@ class FrameSender:
         self.port = port
         self.refresh_hz = max(1, min(MAX_REFRESH_HZ, int(refresh_hz)))
         self.period = 1.0 / self.refresh_hz
-        # With a pause between slots a frame may not fit the period: then frames simply follow each other
-        if getattr(port, "slot_gap_us", 0):
+        # With a pause between slots a frame may not fit the period: then frames simply follow each other.
+        # This is the first guess; the loop keeps the period at what a frame really takes.
+        self.slot_gap = bool(getattr(port, "slot_gap_us", 0))
+        if self.slot_gap:
             self.period = max(self.period, port.frame_time_s(universe.slots) * FRAME_MARGIN)
         self.on_state = on_state
         self.clock = clock
@@ -124,7 +126,7 @@ class FrameSender:
         if self.realtime:
             LOG.info("%s: scheduling: %s", self.port.path, try_realtime())
         if getattr(self.port, "slot_gap_us", 0):
-            LOG.info("%s: %d us between slots: a frame takes %.1f ms, refresh %.1f Hz", self.port.path,
+            LOG.info("%s: %d us between slots: a frame takes about %.1f ms, refresh about %.1f Hz", self.port.path,
                      self.port.slot_gap_us, self.port.frame_time_s(self.universe.slots) * 1e3, 1.0 / self.period)
         next_retry = 0.0
         last_send_ms = 0.0
@@ -160,6 +162,8 @@ class FrameSender:
                 t_send = self.clock()
                 self.port.send_frame(self.universe.snapshot())
                 last_send_ms = (self.clock() - t_send) * 1e3
+                if self.slot_gap:
+                    self.period = max(1.0 / self.refresh_hz, last_send_ms / 1e3 * FRAME_MARGIN)
                 self.frames += 1
                 window_frames += 1
                 if now - window_start >= STATS_WINDOW_S:

@@ -31,7 +31,7 @@ def test_frame_time_and_clamping():
     assert plain.slot_gap_us == 0
     assert plain.frame_time_s(512) == pytest.approx((176 + 20 + 513 * 44) / 1e6)       # 22.8 ms back to back
     slow = dp.DmxPort("/dev/x", ops=FakeOps(), slot_gap_us=50)
-    assert slow.frame_time_s(512) == pytest.approx((176 + 20 + 513 * (44 + 50)) / 1e6)
+    assert slow.frame_time_s(512) == pytest.approx((176 + 20 + 513 * (44 + 50 + dp.SLEEP_JITTER_US)) / 1e6)
     assert dp.DmxPort("/dev/x", ops=FakeOps(), slot_gap_us=99999).slot_gap_us == dp.MAX_SLOT_GAP_US
     assert dp.DmxPort("/dev/x", ops=FakeOps(), slot_gap_us=-5).slot_gap_us == 0
 
@@ -42,7 +42,12 @@ def test_sender_stretches_the_period_to_the_frame():
     assert fast.period == pytest.approx(0.025)
     slow_port = dp.DmxPort("/dev/x", ops=ops, slot_gap_us=50)
     slow = FrameSender(Universe(slots=512), slow_port, refresh_hz=40, realtime=False)
-    assert slow.period == pytest.approx(slow_port.frame_time_s(512) * 1.05) and 19 < 1 / slow.period < 20
+    assert slow.period == pytest.approx(slow_port.frame_time_s(512) * 1.05) and 16 < 1 / slow.period < 18
+    slow_port.open()
+    slow.clock, slow.sleep = ops.monotonic, ops.sleep
+    slow.run(max_frames=2)                               # the period then follows what a frame really took
+    took = (176 + 20) / 1e6 + 513 * (dp.SLOT_US + 50 - dp.SLEEP_OVERHEAD_US) / 1e6
+    assert slow.period == pytest.approx(took * 1.05, rel=1e-3)
     short = FrameSender(Universe(slots=64), dp.DmxPort("/dev/x", ops=ops, slot_gap_us=50), refresh_hz=40,
                         realtime=False)
     assert short.period == pytest.approx(0.025)          # 65 slots with pauses still fit 40 Hz
