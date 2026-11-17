@@ -37,6 +37,9 @@ except ImportError:  # pragma: no cover
 DMX_BAUD = 250000
 MIN_BREAK_US = 88
 MIN_MAB_US = 8
+SLOT_US = 44               # one slot on the wire: start bit, 8 data bits, 2 stop bits at 4 µs each
+MAX_SLOT_GAP_US = 1000
+WRITE_US = 8               # what a one-byte write() adds to a slot on the controller (measured 4–8 µs)
 DRAIN_TIMEOUT_S = 0.1      # a 512-slot frame is 22.6 ms on the wire
 DRAIN_POLL_S = 0.0002
 
@@ -111,10 +114,13 @@ class DmxPort:
     """One DMX universe on one serial port. Not thread-safe: one sender per port."""
 
     def __init__(self, path: str, break_us: int = 176, mab_us: int = 20, de_via_rts: bool = True,
-                 ops: Optional[PortOps] = None) -> None:
+                 ops: Optional[PortOps] = None, slot_gap_us: int = 0) -> None:
         self.path = path
         self.break_us = max(MIN_BREAK_US, int(break_us))
         self.mab_us = max(MIN_MAB_US, int(mab_us))
+        # A pause after every slot, for receivers that cannot keep up with back-to-back bytes. The UART
+        # cannot do it by itself, so the frame goes out byte by byte with a busy-wait in between.
+        self.slot_gap_us = max(0, min(MAX_SLOT_GAP_US, int(slot_gap_us)))
         self.de_via_rts = de_via_rts
         self.ops = ops or PortOps()
         self.fd: Optional[int] = None
@@ -195,6 +201,11 @@ class DmxPort:
 
     # ---- frames ----------------------------------------------------------------------------
 
+    def frame_time_s(self, slot_count: int) -> float:
+        """How long a frame of that many slots stays on the wire."""
+        slot_us = SLOT_US + (self.slot_gap_us + WRITE_US if self.slot_gap_us else 0)
+        return (self.break_us + self.mab_us + (slot_count + 1) * slot_us) / 1e6
+
     def send_frame(self, slots: bytes) -> None:
         """BREAK, MAB, start code and the slots; waits for the previous frame to leave the UART."""
         fd = self.fd
@@ -208,9 +219,16 @@ class DmxPort:
             self.ops.ioctl(fd, TIOCCBRK)
             self.ops.spin_us(self.mab_us)
             data = b"\x00" + bytes(slots)
-            written = 0
-            while written < len(data):
-                written += self.ops.write(fd, data[written:])
+            if self.slot_gap_us:
+                wait_us = SLOT_US + self.slot_gap_us       # the byte itself, then the pause
+                write, spin = self.ops.write, self.ops.spin_us
+                for i in range(len(data)):
+                    write(fd, data[i:i + 1])
+                    spin(wait_us)
+            else:
+                written = 0
+                while written < len(data):
+                    written += self.ops.write(fd, data[written:])
         except OSError as e:
             raise DmxPortError(f"{self.path}: {e.strerror or e}") from e
         self.frames += 1

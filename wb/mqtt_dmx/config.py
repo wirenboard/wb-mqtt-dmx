@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .dmx_port import MAX_SLOT_GAP_US
 from .ids import id_from_name, unique_id
 from .netin import ARTNET_MAX_UNIVERSE, SACN_MAX_UNIVERSE
 from .templates import LAYOUT_TYPE, Template, TemplateError, channels_template, layout_template
@@ -78,6 +79,7 @@ class Port:
     de_via_rts: bool
     artnet_universe: int | None = None   # network input, None = off
     sacn_universe: int | None = None
+    slot_gap_us: int = 0                 # pause between slots for slow receivers, 0 = back to back
     devices: list[Device] = field(default_factory=list)
     groups: list[Group] = field(default_factory=list)
 
@@ -130,6 +132,7 @@ def _port(entry: dict[str, Any], n: int) -> Port:
         slots=_int(adv, "slots", UNIVERSE_SIZE, 24, UNIVERSE_SIZE, where),
         break_us=_int(adv, "break_us", 176, 88, 1000, where), mab_us=_int(adv, "mab_us", 20, 8, 1000, where),
         de_via_rts=de == "rts", artnet_universe=artnet, sacn_universe=sacn,
+        slot_gap_us=_int(adv, "slot_gap_us", 0, 0, MAX_SLOT_GAP_US, where),
     )
 
 

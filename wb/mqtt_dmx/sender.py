@@ -23,6 +23,7 @@ RETRY_S = 5.0
 RT_PRIORITY = 10           # SCHED_FIFO priority of the frame thread; modest, below kernel threads
 STATS_WINDOW_S = 2.0
 STALL_LOG_S = 0.010        # a frame starting this late against the grid is logged
+FRAME_MARGIN = 1.05        # idle line between frames when the period is set by the frame length
 MCL_CURRENT, MCL_FUTURE = 1, 2
 
 
@@ -85,6 +86,9 @@ class FrameSender:
         self.port = port
         self.refresh_hz = max(1, min(MAX_REFRESH_HZ, int(refresh_hz)))
         self.period = 1.0 / self.refresh_hz
+        # With a pause between slots a frame may not fit the period: then frames simply follow each other
+        if getattr(port, "slot_gap_us", 0):
+            self.period = max(self.period, port.frame_time_s(universe.slots) * FRAME_MARGIN)
         self.on_state = on_state
         self.clock = clock
         self.sleep = sleep
@@ -119,6 +123,9 @@ class FrameSender:
         """Stream until stop() (or max_frames, for test-port and tests)."""
         if self.realtime:
             LOG.info("%s: scheduling: %s", self.port.path, try_realtime())
+        if getattr(self.port, "slot_gap_us", 0):
+            LOG.info("%s: %d us between slots: a frame takes %.1f ms, refresh %.1f Hz", self.port.path,
+                     self.port.slot_gap_us, self.port.frame_time_s(self.universe.slots) * 1e3, 1.0 / self.period)
         next_retry = 0.0
         last_send_ms = 0.0
         next_frame = self.clock()

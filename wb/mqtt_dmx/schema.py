@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .dmx_port import MAX_SLOT_GAP_US
 from .netin import ARTNET_MAX_UNIVERSE, SACN_MAX_UNIVERSE
 from .templates import DEFAULT_LAYOUT, LAYOUT_RE, Template
 
@@ -31,6 +32,9 @@ ON_STOP_DESCRIPTION = ("What happens when the service stops. Hold: frames just s
                        "values until their own timeout. Blackout: all channels are set to 0 first.")
 DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
                   "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
+SLOT_GAP_DESCRIPTION = ("0: channels go back to back, as ordinary consoles send them. A pause helps fixtures that "
+                        "cannot keep up with the data and flicker. The frame gets longer, so the refresh rate drops "
+                        "(50 µs at 512 channels: about 18 Hz) and the port keeps one CPU core busy.")
 NETWORK_DESCRIPTION = ("A lighting console or software (QLC+, MadMapper, …) can send this port's universe over the "
                        "network. While it sends, its frames are output and the device controls show its values; "
                        "a few seconds after it stops the port returns to the values set over MQTT. Off by default: anyone "
@@ -57,6 +61,10 @@ RU = {
     "All channels 0": "Все каналы в 0", "Hold last frame": "Оставить как есть",
     "Blackout": "Погасить всё", "Advanced": "Дополнительно", "Channels per frame": "Каналов в кадре",
     "BREAK, µs": "BREAK, мкс", "MAB, µs": "MAB, мкс", "Transmitter enable": "Включение передатчика",
+    "Pause between channels, µs": "Пауза между каналами, мкс",
+    SLOT_GAP_DESCRIPTION: "0 — каналы идут вплотную, как у обычных пультов. Пауза помогает приборам, которые не "
+                          "успевают принимать данные и мерцают. Кадр становится длиннее, поэтому частота падает "
+                          "(50 мкс при 512 каналах — около 18 Гц), а порт занимает одно ядро процессора.",
     "RTS": "RTS", "Kernel": "Ядро",
     "Devices": "Приборы", "Device id": "Идентификатор", "Type": "Тип", "Start address": "Стартовый адрес",
     "Count": "Количество",
@@ -98,8 +106,10 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "slots": _int("Channels per frame", 24, UNIVERSE_SIZE, UNIVERSE_SIZE, 1, options={"grid_columns": 4}),
             "break_us": _int("BREAK, µs", 88, 1000, 176, 2, options={"grid_columns": 4}),
             "mab_us": _int("MAB, µs", 8, 1000, 20, 3, options={"grid_columns": 4}),
+            "slot_gap_us": _int("Pause between channels, µs", 0, MAX_SLOT_GAP_US, 0, 4,
+                                description=SLOT_GAP_DESCRIPTION, options={"grid_columns": 6}),
             "de_control": {"type": "string", "title": "Transmitter enable", "enum": ["rts", "none"],
-                           "default": "rts", "propertyOrder": 4, "description": DE_DESCRIPTION,
+                           "default": "rts", "propertyOrder": 5, "description": DE_DESCRIPTION,
                            "options": {"enum_titles": ["RTS", "Kernel"], "grid_columns": 6}},
         },
     }

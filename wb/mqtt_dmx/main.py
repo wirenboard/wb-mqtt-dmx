@@ -43,7 +43,8 @@ def pattern_frame(pattern: str, slots: int, second: int) -> bytes:
 
 def cmd_test_port(args: argparse.Namespace) -> int:
     universe = Universe(args.slots)
-    port = DmxPort(args.port, break_us=args.break_us, mab_us=args.mab_us, de_via_rts=not args.no_rts)
+    port = DmxPort(args.port, break_us=args.break_us, mab_us=args.mab_us, de_via_rts=not args.no_rts,
+                   slot_gap_us=args.slot_gap_us)
     sender = FrameSender(universe, port, args.hz, realtime=not args.no_rt)
     universe.write(1, pattern_frame(args.pattern, args.slots, 0))
     frames = int(args.seconds * sender.refresh_hz)
@@ -127,6 +128,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--slots", type=int, default=512)
     p.add_argument("--break-us", type=int, default=176)
     p.add_argument("--mab-us", type=int, default=20)
+    p.add_argument("--slot-gap-us", type=int, default=0, help="pause between slots for slow receivers")
     p.add_argument("--no-rts", action="store_true", help="leave direction control to the kernel/adapter")
     u = sub.add_parser("update-schema", help="regenerate the confed form from the decoder templates")
     u.add_argument("--schema", default=str(schema.SCHEMA_PATH), help="where to write the schema")
