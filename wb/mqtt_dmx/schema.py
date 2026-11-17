@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .netin import ARTNET_MAX_UNIVERSE, SACN_MAX_UNIVERSE
-from .templates import DEFAULT_LAYOUT, LAYOUT_RE, Template
+from .templates import DEFAULT_LAYOUT, LAYOUT_RE, MODES_RE, Template
 
 CONFIG_PATH = "/etc/wb-mqtt-dmx.conf"
 SERVICE = "wb-mqtt-dmx"
@@ -37,7 +37,7 @@ NETWORK_DESCRIPTION = ("A lighting console or software (QLC+, MadMapper, …) ca
                        "on the network could drive the lights. Art-Net port address 0–32767 (net·subnet·universe); "
                        "sACN universe 1–63999, unicast or multicast.")
 DEVICES_DESCRIPTION = ("Layout: one letter per DMX channel in the device's order — d dimmer, r g b colour, w white, "
-                       "a amber, u UV, c cold white, h warm white, s strobe, m mode (program channel), _ unused; e.g. dRGBW. Address 0 places the "
+                       "a amber, u UV, c cold white, h warm white, s strobe, m mode (program channel), _ unused; e.g. dRGBW. Modes names the ranges of the m channel, e.g. 0 Manual, 51 Jump, 101 Fade: the channel then shows as a drop-down list. Address 0 places the "
                        "device right after the previous one. Count above 1 gives N identical devices on consecutive "
                        "addresses plus a group device for all of them. The MQTT id is made from the name "
                        "(Фасад → dmx_fasad); fill it in only to pin a specific id.")
@@ -69,7 +69,7 @@ RU = {
     DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
                     "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
     DEVICES_DESCRIPTION: "Раскладка: по букве на DMX-канал в порядке прибора — d диммер, r g b цвет, w белый, "
-                         "a янтарный, u УФ, c холодный белый, h тёплый белый, s строб, m режим (канал программ), _ не используется; например dRGBW. "
+                         "a янтарный, u УФ, c холодный белый, h тёплый белый, s строб, m режим (канал программ), _ не используется; например dRGBW. «Режимы» — названия диапазонов канала m, например 0 Ручной, 51 Скачки, 101 Перелив: тогда канал показывается выпадающим списком. "
                          "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт N одинаковых приборов "
                          "на адресах подряд плюс групповое устройство для всех сразу. MQTT-идентификатор строится из "
                          "названия (Фасад → dmx_fasad); заполняйте его, только если нужен конкретный.",
@@ -80,7 +80,7 @@ RU = {
                          "через несколько секунд после остановки порт возвращается к значениям из MQTT. По умолчанию выключено: "
                          "иначе светом может управлять любой в сети. Адрес порта Art-Net 0–32767 "
                          "(net·subnet·universe); вселенная sACN 1–63999, unicast или multicast.",
-    "Layout": "Раскладка", "Resolution": "Разрядность", "8 bit": "8 бит", "16 bit": "16 бит",
+    "Layout": "Раскладка", "Modes": "Режимы", "Resolution": "Разрядность", "8 bit": "8 бит", "16 bit": "16 бит",
     "MQTT id": "MQTT-идентификатор", "Address": "Адрес", "Device": "Прибор", "Channels": "Каналов",
 }
 
@@ -192,12 +192,14 @@ def device_schema(templates: dict[str, Template]) -> dict[str, Any]:
                        "propertyOrder": 3, "options": {"dependencies": {"type": ["layout"]}}},
             "bits": {"type": "integer", "title": "Resolution", "enum": [8, 16], "default": 8, "propertyOrder": 4,
                      "options": {"enum_titles": ["8 bit", "16 bit"], "dependencies": {"type": ["layout"]}}},
-            "channels": _int("Channels", 1, UNIVERSE_SIZE, 1, 5, options={"dependencies": {"type": ["channels"]}}),
-            "address": _int("Address", 0, UNIVERSE_SIZE, 0, 6),
-            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 7),
+            "modes": {"type": "string", "title": "Modes", "pattern": MODES_RE, "default": "", "propertyOrder": 5,
+                      "options": {"dependencies": {"type": ["layout"]}}},
+            "channels": _int("Channels", 1, UNIVERSE_SIZE, 1, 6, options={"dependencies": {"type": ["channels"]}}),
+            "address": _int("Address", 0, UNIVERSE_SIZE, 0, 7),
+            "count": _int("Count", 1, UNIVERSE_SIZE, 1, 8),
             # Empty id = derived from the name by transliteration (facade, prolet_1); shown in the device card.
             "id": {"type": "string", "title": "MQTT id", "pattern": "^([a-z0-9_]{1,32})?$", "default": "",
-                   "propertyOrder": 8},
+                   "propertyOrder": 9},
         },
         "required": ["name", "type"],
         "options": {"disable_edit_json": True, "disable_properties": True},
