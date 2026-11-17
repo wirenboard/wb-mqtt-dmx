@@ -79,11 +79,12 @@ class Template:
     channels: list[Channel] = field(default_factory=list)
     source: str = ""                 # file the template came from, for messages
     dynamic: bool = False            # built in; shape comes from the device entry
+    size: int = 0                    # addresses taken when unused channels follow the last named one
 
     @property
     def footprint(self) -> int:
         """DMX addresses the device occupies."""
-        return max((c.offset + c.width for c in self.channels), default=0)
+        return max(self.size, max((c.offset + c.width for c in self.channels), default=0))
 
 
 def _title(raw: Any, fallback: str, where: str) -> dict[str, str]:
@@ -155,7 +156,7 @@ def layout_template(layout: str, bits: int = 8) -> Template:
         offset += width
     if not channels:
         raise TemplateError(f"layout {layout!r}: at least one channel must not be '_'")
-    return Template(LAYOUT_TYPE, LAYOUT_TITLE, channels, "layout", dynamic=True)
+    return Template(LAYOUT_TYPE, LAYOUT_TITLE, channels, "layout", dynamic=True, size=offset)
 
 
 def channels_template(count: int) -> Template:

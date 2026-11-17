@@ -17,6 +17,9 @@ def test_layout_strings_become_templates():
     assert [(c.id, c.offset, c.bits) for c in t16.channels] == [("cold", 0, 16), ("warm", 2, 16)] and t16.footprint == 4
     skip = templates.layout_template("r_g_b")
     assert [c.offset for c in skip.channels] == [0, 2, 4] and skip.footprint == 5
+    tail = templates.layout_template("drgb___")        # unused channels at the end still take addresses
+    assert [c.id for c in tail.channels] == ["dimmer", "red", "green", "blue"] and tail.footprint == 7
+    assert templates.layout_template("d_", 16).footprint == 4
     twice = templates.layout_template("ww")
     assert [c.id for c in twice.channels] == ["white", "white_2"] and twice.channels[1].title["ru"] == "Белый 2"
     for bad in ("", "xyz", "___", "r" * 65):

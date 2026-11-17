@@ -63,6 +63,12 @@ def test_channels_type_takes_its_count_from_the_entry():
     assert p.devices[0].template.title["ru"] == "Каналы"
 
 
+def test_unused_channels_at_the_end_take_addresses():
+    cfg = {"ports": [port(devices=[dev("Пар", layout="drgb___", count=2), dev("Следом", layout="d")])]}
+    (p,) = load_config(cfg, TEMPLATES)
+    assert [(d.id, d.address) for d in p.devices if d.id != "par"] == [("par1", 1), ("par2", 8), ("sledom", 15)]
+
+
 def test_layout_devices_and_16_bit():
     cfg = {"ports": [port(devices=[dev("Пар", layout="dRGBW"), dev("Диммер", layout="d", bits=16), dev("Плохой", layout="q")])]}
     with pytest.raises(ConfigError, match="letters d r g b"):
