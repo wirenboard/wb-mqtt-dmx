@@ -172,8 +172,7 @@ def load_config(config: dict[str, Any], templates: dict[str, Template]) -> list[
                 raise ConfigError(f"{where}: unknown type '{type_key}'")
             if type_key == LAYOUT_TYPE:
                 try:
-                    template = layout_template(str(dev.get("layout") or ""), _int(dev, "bits", 8, 8, 16, where),
-                                               str(dev.get("modes") or ""))
+                    template = layout_template(str(dev.get("layout") or ""), _int(dev, "bits", 8, 8, 16, where))
                 except TemplateError as e:
                     raise ConfigError(f"{where}: {e}") from e
             elif template.dynamic:

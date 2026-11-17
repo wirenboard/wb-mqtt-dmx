@@ -6,8 +6,7 @@ Three sources, all producing the same `Template`:
   `d` dimmer, `r` `g` `b` red/green/blue, `w` white, `a` amber, `u` UV, `c` cold white, `h` warm white,
   `s` strobe, `m` mode (the program / function channel of a fixture, a plain 0–255 value), `_` an unused
   channel. `dRGBW` is a 5-channel decoder with a master dimmer. Case does not matter. With 16-bit
-  resolution every channel takes two DMX slots (coarse, fine). A modes string next to the layout names the
-  ranges of the `m` channel (`0 Manual, 51 Jump, 101 Fade`), which turns it into a drop-down list.
+  resolution every channel takes two DMX slots (coarse, fine).
 * **Channels**: N plain channels ch1…chN, for anything else.
 * **JSON template files** for devices with named channels, modes and enum channels (strobe programs,
   wheels); the package may ship some, a user adds their own in /etc/wb-mqtt-dmx.conf.d/templates.
@@ -59,58 +58,12 @@ class TemplateError(ValueError):
 
 
 @dataclass
-class Range:
-    """A named span of a channel's values: what a fixture does while the channel is within it."""
-    start: int
-    end: int
-    title: dict[str, str]
-
-    @property
-    def value(self) -> int:
-        """What is sent for this range: its middle, clear of both borders."""
-        return (self.start + self.end) // 2
-
-
-# "0 Manual, 51 Jump" — also "0-50 Manual; 51-100: Jump", the way manuals print it
-MODES_RE = r"^\s*(\d{1,3}\s*(-\s*\d{1,3}\s*)?[:=]?\s*[^\s,;\d][^,;]*([,;]\s*|$))*$"
-_MODE_ITEM = re.compile(r"^(\d{1,3})\s*(?:-\s*(\d{1,3})\s*)?[:=]?\s*(\S.*)$")
-MAX_MODES = 32
-
-
-def parse_modes(text: str) -> list[Range]:
-    """Ranges from a modes string; each runs up to the start of the next one, the last to 255."""
-    starts: list[tuple[int, str]] = []
-    for item in re.split(r"[,;]", str(text or "")):
-        item = item.strip()
-        if not item:
-            continue
-        m = _MODE_ITEM.match(item)
-        if not m:
-            raise TemplateError(f"modes: {item!r} is not 'value name', e.g. 0 Manual, 51 Jump")
-        start, end, name = int(m.group(1)), m.group(2), m.group(3).strip()
-        if start > 255 or (end is not None and not start <= int(end) <= 255):
-            raise TemplateError(f"modes: {item!r} is out of the range 0..255")
-        if starts and start <= starts[-1][0]:
-            raise TemplateError(f"modes: {item!r} must start after {starts[-1][0]}")
-        starts.append((start, name[:32]))
-    if not starts:
-        return []
-    if starts[0][0] != 0:
-        raise TemplateError("modes: the first mode must start at 0")
-    if len(starts) > MAX_MODES:
-        raise TemplateError(f"modes: at most {MAX_MODES} modes")
-    ends = [s - 1 for s, _ in starts[1:]] + [255]
-    return [Range(s, e, {"en": name, "ru": name}) for (s, name), e in zip(starts, ends)]
-
-
-@dataclass
 class Channel:
     id: str
     title: dict[str, str]
     offset: int                      # 0-based offset of the coarse byte from the device start address
     default: int = 0
     bits: int = 8                    # 16: the fine byte follows the coarse one
-    ranges: list[Range] = field(default_factory=list)   # named ranges: the control is a drop-down list
 
     @property
     def width(self) -> int:
@@ -184,13 +137,9 @@ def parse_template(doc: Any, source: str = "") -> Template:
     return Template(key, _title(doc.get("title"), key, source), channels, source)
 
 
-def layout_template(layout: str, bits: int = 8, modes: str = "") -> Template:
+def layout_template(layout: str, bits: int = 8) -> Template:
     """A device described by a layout string, e.g. 'dRGBW' or 'rgb' (see the module docstring)."""
     layout = str(layout or "").strip()
-    # Modes left over after the m was removed from the layout are not an error: nothing to apply them to
-    ranges = parse_modes(modes) if "m" in layout.lower() else []
-    if ranges and bits != 8:
-        raise TemplateError("modes need the 8-bit resolution")
     if not re.match(LAYOUT_RE, layout):
         raise TemplateError(f"layout {layout!r}: use the letters d r g b w a u c h s m and _ (1..64 of them)")
     if bits not in (8, 16):
@@ -205,7 +154,7 @@ def layout_template(layout: str, bits: int = 8, modes: str = "") -> Template:
             counts[cid] = counts.get(cid, 0) + 1
             if counts[cid] > 1:
                 cid, title = f"{cid}_{counts[cid]}", {k: f"{v} {counts[cid]}" for k, v in title.items()}
-            channels.append(Channel(cid, title, offset, 0, bits, ranges if letter == "m" else []))
+            channels.append(Channel(cid, title, offset, 0, bits))
         offset += width
     if not channels:
         raise TemplateError(f"layout {layout!r}: at least one channel must not be '_'")
