@@ -1,0 +1,23 @@
+.devcontainer/
+.vscode/
+.coveragerc
+pyproject.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Debian build
+build/
+.pybuild/
+debian/wb-mqtt-dmx/
+debian/*.debhelper*
+debian/*.substvars
+debian/files
+*.deb
+*.buildinfo
+*.changes
+
+.claude/

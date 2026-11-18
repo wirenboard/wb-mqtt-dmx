@@ -1,0 +1,15 @@
+[Unit]
+Description=DMX512 output from the controller serial ports
+After=NetworkManager.service mosquitto.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/wb-mqtt-dmx
+Restart=on-failure
+RestartSec=10
+# 6 = configuration error: fixed through the web form, which restarts the unit itself.
+RestartPreventExitStatus=6
+
+[Install]
+WantedBy=multi-user.target

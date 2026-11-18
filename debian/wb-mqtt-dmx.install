@@ -1,0 +1,4 @@
+bin/wb-mqtt-dmx /usr/bin
+wb-mqtt-dmx.schema.json /usr/share/wb-mqtt-confed/schemas
+wb-mqtt-dmx.conf /etc
+10wb-mqtt-dmx /etc/wb-configs.d
