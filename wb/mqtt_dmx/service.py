@@ -65,10 +65,10 @@ PORT_STATE_ENUM = {
 PORT_DISABLED, PORT_STARTING, PORT_RUNNING, PORT_ERROR = "0", "1", "2", "3"
 WB_MQTT_SERIAL_CONF = Path("/etc/wb-mqtt-serial.conf")
 STATE_PATH = Path("/var/lib/wb-mqtt-dmx/state.json")
-# The values go to the root filesystem (eMMC). A rule or a scene that changes the light all the time
-# must not turn into a write every second around the clock, so changes are gathered for this long.
-# After a power loss "restore last values" may therefore be up to this much behind.
-STATE_SAVE_INTERVAL_S = 10.0
+# The values of a port that restores them on start go to the root filesystem (eMMC). They are written
+# only once the light has stood still for this long, and only when they differ from what is in the file.
+# A running scene therefore writes nothing: whoever draws it will draw it again after a restart.
+STATE_SETTLE_S = 10.0
 STATS_INTERVAL_S = 5.0
 NET_PUBLISH_INTERVAL_S = 0.25  # how often control values follow a network source (40 fps would flood MQTT)
 NET_SOURCE_MQTT = "MQTT"
@@ -181,6 +181,9 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._state_dirty = threading.Event()
+        self._last_change = 0.0  # when a value last really changed, by self.clock
+        self._saved_text = ""  # what the state file holds
+        self.clock: Callable[[], float] = time.monotonic  # tests replace it
         self._error_text = ""
         for port in (p for p in ports if p.enabled):
             universe = Universe(port.slots)
@@ -227,9 +230,10 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
 
     def _restore_state(self) -> None:
         try:
-            saved = json.loads(self._state_path.read_text(encoding="utf-8"))
+            self._saved_text = self._state_path.read_text(encoding="utf-8")
+            saved = json.loads(self._saved_text)
         except (OSError, ValueError):
-            saved = {}
+            self._saved_text, saved = "{}", {}
         for rt in self._runtimes.values():
             if rt.port.on_start != "restore":
                 continue
@@ -249,8 +253,13 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
                 rt.values[target.device_id] = self._values_from_universe(rt, target)
 
     def save_state(self) -> None:
+        """
+        Write the values of the ports that restore them on start, unless the file already holds them.
+        """
         state = {}
         for rt in self._runtimes.values():
+            if rt.port.on_start != "restore":
+                continue  # nobody will read them back
             snapshot = bytearray(rt.universe.snapshot())
             if rt.net_source:
                 # A console is drawing: keep the MQTT values, not the console's frame
@@ -260,22 +269,39 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
                     )
                     snapshot[device.address - 1 : device.address - 1 + len(data)] = data
             state[rt.port.path] = {str(i + 1): v for i, v in enumerate(snapshot) if v}
+        text = json.dumps(state)
+        if text == self._saved_text:
+            return
         try:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._state_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(state), encoding="utf-8")
+            tmp.write_text(text, encoding="utf-8")
             tmp.replace(self._state_path)
+            self._saved_text = text
         except OSError as e:
             LOG.warning("cannot save the state to %s: %s", self._state_path, e)
 
+    def save_state_when_settled(self) -> bool:
+        """
+        Save the values if they have changed and then stood still for STATE_SETTLE_S.
+
+        Returns:
+            True when the values were due to be saved.
+        """
+        if not self._state_dirty.is_set() or self.clock() - self._last_change < STATE_SETTLE_S:
+            return False
+        self._state_dirty.clear()
+        self.save_state()
+        return True
+
+    def _values_changed(self) -> None:
+        self._last_change = self.clock()
+        self._state_dirty.set()
+
     def _state_saver_loop(self) -> None:
         last_stats = time.monotonic()
-        while not self._stop.is_set():
-            if self._state_dirty.wait(timeout=1.0):
-                self._state_dirty.clear()
-                if self._stop.wait(STATE_SAVE_INTERVAL_S):  # gather the changes; run() saves on stop
-                    return
-                self.save_state()
+        while not self._stop.wait(1.0):
+            self.save_state_when_settled()
             # On its own clock: a rule writing every few seconds must not starve the stats
             if time.monotonic() - last_stats >= STATS_INTERVAL_S:
                 last_stats = time.monotonic()
@@ -559,16 +585,19 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
             value = control.parse(payload)
             if value is None:
                 return False
+            members = target.members if isinstance(target, Group) else [target]
+            # A rule that keeps sending the same value changes nothing and must not hold the save back
+            changed = any(rt.values[d.device_id][control_id] != value for d in [target, *members])
             rt.values[device_id][control_id] = value
             self._pub(f"/devices/{device_id}/controls/{control_id}", str(value))
-            members = target.members if isinstance(target, Group) else [target]
             for member in members:
                 if isinstance(target, Group):
                     rt.values[member.device_id][control_id] = value
                     self._pub(f"/devices/{member.device_id}/controls/{control_id}", str(value))
                 if not rt.net_source:  # a console owns the line: the value waits until it lets go
                     self._render(rt, member)
-            self._state_dirty.set()
+            if changed:
+                self._values_changed()
             return True
 
     def blackout(self) -> None:
@@ -579,7 +608,7 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
                     for control in rt.controls[device_id]:
                         values[control.id] = control.zero
                         self._pub(f"/devices/{device_id}/controls/{control.id}", str(control.zero))
-            self._state_dirty.set()
+            self._values_changed()
 
     def _signal_handler(self, _signum: int, _frame: Optional[FrameType]) -> None:
         LOG.info("stop requested")

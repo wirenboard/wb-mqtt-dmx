@@ -51,8 +51,10 @@ REFRESH_DESCRIPTION = (
     "Default 40, the maximum for 512 channels."
 )
 ON_START_DESCRIPTION = (
-    "Channel values right after the service starts (reboot, saving these settings). Restore: "
-    "the same as before the stop. All channels 0: start dark. Default: restore."
+    "Channel values right after the service starts (reboot, saving these settings). Restore: the same as "
+    "before the stop. For that the values are written to the controller's storage, but only once the light "
+    "has stood still for 10 seconds, so a running scene writes nothing. All channels 0: start dark; nothing "
+    "is stored, and the light also goes out when these settings are saved. Default: restore."
 )
 ON_STOP_DESCRIPTION = (
     "What happens when the service stops. Hold: frames just stop and the fixtures keep their "
@@ -155,9 +157,10 @@ RU = {
     "мерцают. "
     "По умолчанию 40, это максимум для 512 каналов.",
     ON_START_DESCRIPTION: "Значения каналов сразу после запуска сервиса (перезагрузка, сохранение этих "
-    "настроек). "
-    "Восстановить: те же, что были до остановки. Все каналы в 0: начать с темноты. "
-    "По умолчанию: восстановить.",
+    "настроек). Восстановить: те же, что были до остановки. Для этого значения записываются в память "
+    "контроллера, но только когда свет 10 секунд стоит на месте, так что бегущая сцена ничего не пишет. "
+    "Все каналы в 0: начать с темноты; ничего не хранится, и свет гаснет также при сохранении этих "
+    "настроек. По умолчанию: восстановить.",
     ON_STOP_DESCRIPTION: "Что происходит при остановке сервиса. Оставить: кадры просто прекращаются, "
     "приборы держат "
     "последние значения до своего таймаута. Погасить: сначала все каналы ставятся в 0. "

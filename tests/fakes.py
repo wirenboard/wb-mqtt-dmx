@@ -4,7 +4,7 @@ Stand-ins for what the service touches outside the process: the serial port and 
 
 import struct
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from wb.mqtt_dmx import dmx_port as dp
 from wb.mqtt_dmx.config import load_config
@@ -128,13 +128,15 @@ def port_entry(devices: list[dict[str, Any]], path: str = PORT_PATH, **settings:
 
 
 def make_service(
-    devices: list[dict[str, Any]],
-    tmp_path: Path,
-    network: Optional[dict[str, Any]] = None,
-    enabled: bool = True,
+    devices: list[dict[str, Any]], tmp_path: Path, **settings: Any
 ) -> tuple[DmxService, dict[str, str]]:
     """
     A service with one port, connected to a fake broker.
+
+    Args:
+        devices: The devices of the port.
+        tmp_path: Where the service keeps its state file.
+        **settings: Port settings that differ from the defaults, see port_entry.
 
     Returns:
         The service and the topics it has published.
@@ -145,7 +147,7 @@ def make_service(
         clients.append(FakeClient(client_id))
         return clients[-1]
 
-    config = {"ports": [port_entry(devices, enabled=enabled, network=network or {})]}
+    config = {"ports": [port_entry(devices, **settings)]}
     service = DmxService(
         load_config(config),
         client_factory=factory,

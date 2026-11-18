@@ -97,6 +97,70 @@ def test_blackout_zeroes_the_frame_and_the_controls(tmp_path: Path) -> None:
     assert topics["/devices/dmx_prolet2/controls/green"] == "0"
 
 
+def test_values_are_saved_once_the_light_stands_still(tmp_path: Path) -> None:
+    service, _topics = make_service(SPAN_AND_LOGO, tmp_path)
+    now = [100.0]
+    service.clock = lambda: now[0]
+    service.handle_write("dmx_logotip", "dimmer", "50")
+
+    now[0] += 9
+    assert not service.save_state_when_settled()
+    assert not (tmp_path / "state.json").exists()
+    now[0] += 2
+    assert service.save_state_when_settled()
+    assert saved_state(tmp_path) == {PORT_PATH: {"9": 50}}
+    assert not service.save_state_when_settled(), "nothing has changed since"
+
+
+def test_a_running_scene_is_never_saved(tmp_path: Path) -> None:
+    service, _topics = make_service(SPAN_AND_LOGO, tmp_path)
+    now = [100.0]
+    service.clock = lambda: now[0]
+
+    for step in range(120):  # two minutes of a value changing every second
+        service.handle_write("dmx_logotip", "dimmer", str(step))
+        now[0] += 1
+        assert not service.save_state_when_settled()
+
+    assert not (tmp_path / "state.json").exists()
+
+
+def test_repeating_the_same_value_does_not_hold_the_save_back(tmp_path: Path) -> None:
+    service, _topics = make_service(SPAN_AND_LOGO, tmp_path)
+    now = [100.0]
+    service.clock = lambda: now[0]
+    service.handle_write("dmx_prolet", "red", "7")
+
+    for _ in range(3):  # a rule sends everything again every five seconds
+        now[0] += 5
+        service.handle_write("dmx_prolet", "red", "7")
+        service.handle_write("dmx_prolet2", "red", "7")
+
+    assert service.save_state_when_settled()
+    assert saved_state(tmp_path) == {PORT_PATH: {"1": 7, "5": 7}}
+
+
+def test_unchanged_values_are_not_written_again(tmp_path: Path) -> None:
+    service, _topics = make_service(SPAN_AND_LOGO, tmp_path)
+    service.handle_write("dmx_logotip", "dimmer", "50")
+    service.save_state()
+    (tmp_path / "state.json").unlink()
+
+    service.handle_write("dmx_logotip", "dimmer", "60")
+    service.handle_write("dmx_logotip", "dimmer", "50")
+    service.save_state()
+
+    assert not (tmp_path / "state.json").exists(), "the file already holds these values"
+
+
+def test_port_that_starts_dark_stores_nothing(tmp_path: Path) -> None:
+    service, _topics = make_service(SPAN_AND_LOGO, tmp_path, on_start="zero")
+    service.handle_write("dmx_logotip", "dimmer", "50")
+    service.save_state()
+
+    assert not (tmp_path / "state.json").exists()
+
+
 def test_values_are_saved_and_restored_on_the_next_start(tmp_path: Path) -> None:
     devices = [
         {"name": "Логотип", "layout": "d"},
