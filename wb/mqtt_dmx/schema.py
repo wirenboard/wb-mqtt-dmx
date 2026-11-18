@@ -42,11 +42,12 @@ NETWORK_DESCRIPTION = ("A lighting console or software (QLC+, MadMapper, …) ca
                        "off by default: anyone on the network could drive the lights.")
 ARTNET_DESCRIPTION = "Accept Art-Net, UDP port 6454."
 ARTNET_UNIVERSE_DESCRIPTION = ("The Art-Net universe this port listens to, 0–32767 (net·subnet·universe). QLC+ shows "
-                               "address 0 as Universe 1. Default 0; every port needs its own number.")
+                               "address 0 as Universe 1. Used while Art-Net is on. Default 0; every port needs "
+                               "its own number.")
 SACN_DESCRIPTION = ("Accept sACN (E1.31), UDP port 5568, unicast or multicast. With several senders the one with "
                     "the higher priority wins.")
-SACN_UNIVERSE_DESCRIPTION = ("The sACN universe this port listens to, 1–63999. Default 1; every port needs its own "
-                             "number.")
+SACN_UNIVERSE_DESCRIPTION = ("The sACN universe this port listens to, 1–63999. Used while sACN is on. Default 1; "
+                             "every port needs its own number.")
 ADVANCED_DESCRIPTION = ("Signal timing. The defaults suit most fixtures; change them only when a fixture flickers "
                         "or does not respond.")
 SLOTS_DESCRIPTION = ("How many channels every frame carries. Fewer channels make frames shorter, but some fixtures "
@@ -110,11 +111,12 @@ RU = {
                          "умолчанию выключены: иначе светом может управлять любой в сети.",
     ARTNET_DESCRIPTION: "Принимать Art-Net, порт UDP 6454.",
     ARTNET_UNIVERSE_DESCRIPTION: "Вселенная Art-Net, которую слушает этот порт, 0–32767 (net·subnet·universe). "
-                                 "В QLC+ адрес 0 называется Universe 1. По умолчанию 0; у каждого порта свой номер.",
+                                 "В QLC+ адрес 0 называется Universe 1. Действует, пока включён Art-Net. "
+                                 "По умолчанию 0; у каждого порта свой номер.",
     SACN_DESCRIPTION: "Принимать sACN (E1.31), порт UDP 5568, unicast или multicast. Если источников несколько, "
                       "побеждает тот, у кого выше приоритет.",
-    SACN_UNIVERSE_DESCRIPTION: "Вселенная sACN, которую слушает этот порт, 1–63999. По умолчанию 1; у каждого "
-                               "порта свой номер.",
+    SACN_UNIVERSE_DESCRIPTION: "Вселенная sACN, которую слушает этот порт, 1–63999. Действует, пока включён sACN. "
+                               "По умолчанию 1; у каждого порта свой номер.",
     ADVANCED_DESCRIPTION: "Тайминги сигнала. Значения по умолчанию подходят большинству приборов; меняйте их, только "
                           "если прибор мерцает или не реагирует.",
     SLOTS_DESCRIPTION: "Сколько каналов в каждом кадре. Чем меньше каналов, тем короче кадр, но некоторым приборам "
@@ -150,6 +152,8 @@ def _int(title: str, minimum: int, maximum: int, default: int, order: int, **ext
 
 
 def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
+    # Every setting is "required": the form drops an optional field that the saved config lacks, and then
+    # there is no way to bring it back (seen with the Art-Net address and with settings added later).
     advanced = {
         "type": "object", "title": "Advanced", "propertyOrder": 100, "_format": "grid",
         "description": ADVANCED_DESCRIPTION,
@@ -166,6 +170,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
                            "default": "rts", "propertyOrder": 5, "description": DE_DESCRIPTION,
                            "options": {"enum_titles": ["RTS", "Kernel"], "grid_columns": 6}},
         },
+        "required": ["slots", "break_us", "mab_us", "slot_gap_us", "de_control"],
     }
     # Always open: whether a console may take the port over is a thing to see at a glance
     network = {
@@ -176,14 +181,13 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "artnet": {"type": "boolean", "title": "Art-Net", "default": False, "_format": "checkbox",
                        "propertyOrder": 1, "description": ARTNET_DESCRIPTION, "options": {"grid_columns": 6}},
             "artnet_universe": _int("Art-Net port address", 0, ARTNET_MAX_UNIVERSE, 0, 2,
-                                    description=ARTNET_UNIVERSE_DESCRIPTION,
-                                    options={"grid_columns": 6, "dependencies": {"artnet": True}}),
+                                    description=ARTNET_UNIVERSE_DESCRIPTION, options={"grid_columns": 6}),
             "sacn": {"type": "boolean", "title": "sACN", "default": False, "_format": "checkbox",
                      "propertyOrder": 3, "description": SACN_DESCRIPTION, "options": {"grid_columns": 6}},
             "sacn_universe": _int("sACN universe", 1, SACN_MAX_UNIVERSE, 1, 4,
-                                  description=SACN_UNIVERSE_DESCRIPTION,
-                                  options={"grid_columns": 6, "dependencies": {"sacn": True}}),
+                                  description=SACN_UNIVERSE_DESCRIPTION, options={"grid_columns": 6}),
         },
+        "required": ["artnet", "artnet_universe", "sacn", "sacn_universe"],
     }
     settings = {
         "type": "object", "title": "Port settings", "propertyOrder": 1, "_format": "grid",
@@ -209,7 +213,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "network": network,
             "advanced": advanced,
         },
-        "required": ["path"],
+        "required": ["enabled", "path", "name", "refresh_hz", "on_start", "on_stop", "network", "advanced"],
     }
     return {
         "type": "object",

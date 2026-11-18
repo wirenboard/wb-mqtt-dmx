@@ -109,6 +109,17 @@ def test_every_port_setting_is_explained_in_both_languages():
         assert ru.get(text), f"{key}: the caption is not translated"
     for key in ("refresh_hz", "on_start", "on_stop", "slots", "break_us", "mab_us", "slot_gap_us", "de_control"):
         assert "Default" in fields[key]["description"] and "По умолчанию" in ru[fields[key]["description"]], key
+    # nothing can vanish from the form: all settings are required, and the shipped config has them all
+    shipped = json.loads((ROOT / "wb-mqtt-dmx.conf").read_text(encoding="utf-8"))
+    port_settings = s["properties"]["ports"]["items"]["properties"]["settings"]
+    for block, path in ((port_settings, ()), (network, ("network",)), (advanced, ("advanced",))):
+        assert sorted(block["required"]) == sorted(block["properties"])
+        for port in shipped["ports"]:
+            data = port["settings"]
+            for key in path:
+                data = data[key]
+            assert sorted(data) == sorted(block["properties"]), path
+    assert "dependencies" not in network["properties"]["artnet_universe"]["options"]
     # network input is always in sight, the timing knobs stay folded away
     assert network["options"].get("disable_collapse") is True and "collapsed" not in network["options"]
     assert advanced["options"]["collapsed"] is True
