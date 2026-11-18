@@ -91,6 +91,9 @@ def test_schema_lists_template_types_with_titles_and_translations():
     assert s["properties"]["ports"]["_format"] == "tabs-top" and port["properties"]["devices"]["_format"] == "table"
     settings = port["properties"]["settings"]["properties"]
     assert "enabled" not in settings                     # the checkbox sits above the collapsed settings
+    block = port["properties"]["settings"]
+    assert block["title"] == "Port settings" and "headerTemplate" not in block
+    assert s["translations"]["ru"]["Port settings"] == "Настройки порта"
     assert port["properties"]["enabled"]["propertyOrder"] == 0 and port["properties"]["enabled"]["default"] is False
     assert s["translations"]["ru"][port["properties"]["enabled"]["description"]]
     shipped = json.loads((ROOT / "wb-mqtt-dmx.conf").read_text(encoding="utf-8"))

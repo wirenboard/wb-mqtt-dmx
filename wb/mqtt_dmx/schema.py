@@ -183,8 +183,8 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
     }
     settings = {
         "type": "object", "title": "Port settings", "propertyOrder": 1, "_format": "grid",
-        # Collapsed once the port is set up; the header keeps the essentials visible.
-        "headerTemplate": "{{self.path}} · {{self.refresh_hz}} Hz · {{self.on_start}} / {{self.on_stop}}",
+        # Collapsed once the port is set up. The header is just the title: a summary of raw values
+        # (path · 40 Hz · restore / hold) read as noise, and the tab already names the port.
         "options": {"collapsed": True, "disable_edit_json": True, "disable_properties": True},
         "properties": {
             "path": {"type": "string", "title": "Serial port", "minLength": 1, "default": "/dev/ttyRS485-2",
