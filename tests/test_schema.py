@@ -97,6 +97,23 @@ def test_schema_lists_template_types_with_titles_and_translations():
     assert adv["options"]["collapsed"] is True and "start_scene" not in adv["properties"]
 
 
+def test_every_port_setting_is_explained_in_both_languages():
+    s = schema.build_schema(TEMPLATES)
+    ru = s["translations"]["ru"]
+    settings = s["properties"]["ports"]["items"]["properties"]["settings"]["properties"]
+    network, advanced = settings["network"], settings["advanced"]
+    fields = {**settings, **network["properties"], **advanced["properties"]}
+    for key, field in fields.items():
+        text = field.get("description")
+        assert text, f"{key} has no caption"
+        assert ru.get(text), f"{key}: the caption is not translated"
+    for key in ("refresh_hz", "on_start", "on_stop", "slots", "break_us", "mab_us", "slot_gap_us", "de_control"):
+        assert "Default" in fields[key]["description"] and "По умолчанию" in ru[fields[key]["description"]], key
+    # network input is always in sight, the timing knobs stay folded away
+    assert network["options"].get("disable_collapse") is True and "collapsed" not in network["options"]
+    assert advanced["options"]["collapsed"] is True
+
+
 def test_write_schema_skips_unchanged(tmp_path):
     s = schema.build_schema(TEMPLATES)
     p = tmp_path / "s.json"

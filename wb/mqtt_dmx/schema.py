@@ -23,28 +23,53 @@ TITLE = "DMX512 output"
 DESCRIPTION = ("DMX512 fixtures driven from the controller's own RS-485 ports or WBE2 RS-485 modules. Each port is "
                "one DMX line with its devices. A port must be disabled in the serial device driver settings first "
                "(Settings → Configuration files → Serial device driver), the same way as for wb-mqtt-mbgate.")
+# Every caption says what the setting does, when to touch it and what the default is.
 ENABLED_DESCRIPTION = ("Send DMX on this port. Keep it off until the port is disabled in the serial device driver "
-                       "settings, otherwise both drivers write to the same line.")
-PORT_DESCRIPTION = "/dev/ttyRS485-1, /dev/ttyRS485-2 or a WBE2 module port such as /dev/ttyMOD1."
-REFRESH_DESCRIPTION = "Frames per second on the line. 40 is the maximum for 512 channels; LED decoders are fine with 25–40."
-ON_START_DESCRIPTION = "What the line shows after the service starts (reboot, config save)."
-ON_STOP_DESCRIPTION = ("What happens when the service stops. Hold: frames just stop and the decoders keep their last "
-                       "values until their own timeout. Blackout: all channels are set to 0 first.")
-DE_DESCRIPTION = ("RTS: the service holds the RS-485 transmitter enable through RTS (controller ports and WBE2 "
-                  "modules). Kernel: leave direction control to the driver or the adapter (USB DMX adapters).")
-SLOT_GAP_DESCRIPTION = ("0: channels go back to back, as ordinary consoles send them. A pause helps fixtures that "
-                        "cannot keep up with the data and flicker. The frame gets longer, so the refresh rate drops: "
-                        "50 µs at 512 channels gives about 16 Hz. The real pause is about the set value or "
-                        "longer.")
-NETWORK_DESCRIPTION = ("A lighting console or software (QLC+, MadMapper, …) can send this port's universe over the "
-                       "network. While it sends, its frames are output and the device controls show its values; "
-                       "a few seconds after it stops the port returns to the values set over MQTT. Off by default: anyone "
-                       "on the network could drive the lights. Art-Net port address 0–32767 (net·subnet·universe); "
-                       "sACN universe 1–63999, unicast or multicast.")
-DEVICES_DESCRIPTION = ("Layout: one letter per DMX channel in the device's order — d dimmer, r g b colour, w white, "
-                       "a amber, u UV, c cold white, h warm white, s strobe, m mode (program channel), _ unused; e.g. dRGBW. Address 0 places the "
-                       "device right after the previous one. Count above 1 gives N identical devices on consecutive "
-                       "addresses plus a group device for all of them. The MQTT id is made from the name "
+                       "settings, otherwise both drivers write to the same line. Default: off.")
+PORT_DESCRIPTION = ("The RS-485 port the DMX line is wired to: /dev/ttyRS485-1, /dev/ttyRS485-2 or a WBE2 module "
+                    "port such as /dev/ttyMOD1.")
+NAME_DESCRIPTION = "Shown on the tab of the port. Any text."
+REFRESH_DESCRIPTION = ("How many times a second all channels are sent. Lower it to 25–30 if fixtures flicker. "
+                       "Default 40, the maximum for 512 channels.")
+ON_START_DESCRIPTION = ("Channel values right after the service starts (reboot, saving these settings). Restore: "
+                        "the same as before the stop. All channels 0: start dark. Default: restore.")
+ON_STOP_DESCRIPTION = ("What happens when the service stops. Hold: frames just stop and the fixtures keep their "
+                       "last values until their own timeout. Blackout: all channels are set to 0 first. "
+                       "Default: hold.")
+NETWORK_DESCRIPTION = ("A lighting console or software (QLC+, MadMapper, …) can drive this port over the network. "
+                       "While it sends, its frames go to the line and the device channels show its values; a few "
+                       "seconds after it stops, the port returns to the values set over MQTT. Both protocols are "
+                       "off by default: anyone on the network could drive the lights.")
+ARTNET_DESCRIPTION = "Accept Art-Net, UDP port 6454."
+ARTNET_UNIVERSE_DESCRIPTION = ("The Art-Net universe this port listens to, 0–32767 (net·subnet·universe). QLC+ shows "
+                               "address 0 as Universe 1. Default 0; every port needs its own number.")
+SACN_DESCRIPTION = ("Accept sACN (E1.31), UDP port 5568, unicast or multicast. With several senders the one with "
+                    "the higher priority wins.")
+SACN_UNIVERSE_DESCRIPTION = ("The sACN universe this port listens to, 1–63999. Default 1; every port needs its own "
+                             "number.")
+ADVANCED_DESCRIPTION = ("Signal timing. The defaults suit most fixtures; change them only when a fixture flickers "
+                        "or does not respond.")
+SLOTS_DESCRIPTION = ("How many channels every frame carries. Fewer channels make frames shorter, but some fixtures "
+                     "expect all 512. Default 512.")
+BREAK_DESCRIPTION = ("The low level that starts every frame. Lengthen it to 250–400 if fixtures miss the start of "
+                     "a frame. Default 176, the standard allows 88 and more. On the line it comes out up to 80 µs "
+                     "longer.")
+MAB_DESCRIPTION = ("The pause between BREAK and the first byte. Lengthen it to 50–100 for slow fixtures. Default "
+                   "20, the standard allows 8 and more. On the line it comes out 40–80 µs longer.")
+SLOT_GAP_DESCRIPTION = ("A pause after every channel for fixtures that cannot keep up with the data and flicker. "
+                        "The frame gets longer, so the frame rate drops: 50 µs at 512 channels gives about 16 Hz. "
+                        "The real pause is about the set value or longer. Default 0: channels go back to back, as "
+                        "ordinary consoles send them.")
+DE_DESCRIPTION = ("How the RS-485 transmitter is switched on. RTS: the service holds it on itself (controller ports "
+                  "and WBE2 modules). Kernel: the driver or the adapter does it (USB DMX adapters). Default: RTS.")
+DEVICES_DESCRIPTION = ("One row is one fixture or a group of identical ones. Type: Layout for ordinary fixtures, "
+                       "Channels for anything else. Layout: one letter per DMX channel in the fixture's order — "
+                       "d dimmer, r g b colour, w white, a amber, u UV, c cold white, h warm white, s strobe, "
+                       "m mode (program channel), _ unused; e.g. dRGBW; default rgbw. Resolution: 8 bit, or 16 bit "
+                       "when every channel of the fixture takes two addresses. Channels: how many plain channels "
+                       "the device has. Address: the first DMX address; 0, the default, places the device right "
+                       "after the previous one. Count: above 1 gives that many identical devices on consecutive "
+                       "addresses plus a group device for all of them. MQTT id: made from the name "
                        "(Фасад → dmx_fasad); fill it in only to pin a specific id.")
 
 RU = {
@@ -56,40 +81,64 @@ RU = {
     "Ports": "Порты", "Port": "Порт", "Port settings": "Настройки порта", "Name": "Название",
     "Enabled": "Включён",
     ENABLED_DESCRIPTION: "Выдавать DMX на этом порту. Не включайте, пока порт не отключён в настройках драйвера "
-                         "serial-устройств, иначе оба драйвера пишут в одну линию.",
+                         "serial-устройств, иначе оба драйвера пишут в одну линию. По умолчанию выключен.",
     "Serial port": "Порт", "Frame rate, Hz": "Частота кадров, Гц", "On start": "При старте",
     "On stop": "При остановке", "Restore last values": "Восстановить последние значения",
     "All channels 0": "Все каналы в 0", "Hold last frame": "Оставить как есть",
     "Blackout": "Погасить всё", "Advanced": "Дополнительно", "Channels per frame": "Каналов в кадре",
     "BREAK, µs": "BREAK, мкс", "MAB, µs": "MAB, мкс", "Transmitter enable": "Включение передатчика",
     "Pause between channels, µs": "Пауза между каналами, мкс",
-    SLOT_GAP_DESCRIPTION: "0 — каналы идут вплотную, как у обычных пультов. Пауза помогает приборам, которые не "
-                          "успевают принимать данные и мерцают. Кадр становится длиннее, поэтому частота падает: "
-                          "50 мкс при 512 каналах дают около 16 Гц. Настоящая пауза примерно равна заданной "
-                          "или длиннее.",
     "RTS": "RTS", "Kernel": "Ядро",
     "Devices": "Приборы", "Device id": "Идентификатор", "Type": "Тип", "Start address": "Стартовый адрес",
     "Count": "Количество",
-    PORT_DESCRIPTION: "/dev/ttyRS485-1, /dev/ttyRS485-2 или порт модуля WBE2, например /dev/ttyMOD1.",
-    REFRESH_DESCRIPTION: "Кадров в секунду на линии. 40 — максимум для 512 каналов; светодиодным декодерам "
-                         "хватает 25–40.",
-    ON_START_DESCRIPTION: "Что на линии после запуска сервиса (перезагрузка, сохранение настроек).",
-    ON_STOP_DESCRIPTION: "Что происходит при остановке сервиса. Оставить: кадры просто прекращаются, декодеры держат "
-                         "последние значения до своего таймаута. Погасить: сначала все каналы ставятся в 0.",
-    DE_DESCRIPTION: "RTS: сервис сам удерживает включение передатчика RS-485 через RTS (порты контроллера и модули "
-                    "WBE2). Ядро: направлением управляет драйвер или адаптер (USB-адаптеры DMX).",
-    DEVICES_DESCRIPTION: "Раскладка: по букве на DMX-канал в порядке прибора — d диммер, r g b цвет, w белый, "
-                         "a янтарный, u УФ, c холодный белый, h тёплый белый, s строб, m режим (канал программ), _ не используется; например dRGBW. "
-                         "Адрес 0 — сразу после предыдущего прибора. Количество больше 1 даёт N одинаковых приборов "
-                         "на адресах подряд плюс групповое устройство для всех сразу. MQTT-идентификатор строится из "
-                         "названия (Фасад → dmx_fasad); заполняйте его, только если нужен конкретный.",
+    PORT_DESCRIPTION: "Порт RS-485, к которому подключена линия DMX: /dev/ttyRS485-1, /dev/ttyRS485-2 или порт "
+                      "модуля WBE2, например /dev/ttyMOD1.",
+    NAME_DESCRIPTION: "Показывается на вкладке порта. Любой текст.",
+    REFRESH_DESCRIPTION: "Сколько раз в секунду отправляются все каналы. Снизьте до 25–30, если приборы мерцают. "
+                         "По умолчанию 40, это максимум для 512 каналов.",
+    ON_START_DESCRIPTION: "Значения каналов сразу после запуска сервиса (перезагрузка, сохранение этих настроек). "
+                          "Восстановить: те же, что были до остановки. Все каналы в 0: начать с темноты. "
+                          "По умолчанию: восстановить.",
+    ON_STOP_DESCRIPTION: "Что происходит при остановке сервиса. Оставить: кадры просто прекращаются, приборы держат "
+                         "последние значения до своего таймаута. Погасить: сначала все каналы ставятся в 0. "
+                         "По умолчанию: оставить.",
     "Network input": "Приём из сети", "Art-Net port address": "Адрес порта Art-Net",
     "sACN universe": "Вселенная sACN",
-    NETWORK_DESCRIPTION: "Световой пульт или программа (QLC+, MadMapper, …) может присылать вселенную этого порта по "
-                         "сети. Пока она шлёт, на линию идут её кадры, а контролы приборов показывают её значения; "
-                         "через несколько секунд после остановки порт возвращается к значениям из MQTT. По умолчанию выключено: "
-                         "иначе светом может управлять любой в сети. Адрес порта Art-Net 0–32767 "
-                         "(net·subnet·universe); вселенная sACN 1–63999, unicast или multicast.",
+    NETWORK_DESCRIPTION: "Световой пульт или программа (QLC+, MadMapper, …) может управлять этим портом по сети. "
+                         "Пока она шлёт, на линию идут её кадры, а каналы приборов показывают её значения; через "
+                         "несколько секунд после остановки порт возвращается к значениям из MQTT. Оба протокола по "
+                         "умолчанию выключены: иначе светом может управлять любой в сети.",
+    ARTNET_DESCRIPTION: "Принимать Art-Net, порт UDP 6454.",
+    ARTNET_UNIVERSE_DESCRIPTION: "Вселенная Art-Net, которую слушает этот порт, 0–32767 (net·subnet·universe). "
+                                 "В QLC+ адрес 0 называется Universe 1. По умолчанию 0; у каждого порта свой номер.",
+    SACN_DESCRIPTION: "Принимать sACN (E1.31), порт UDP 5568, unicast или multicast. Если источников несколько, "
+                      "побеждает тот, у кого выше приоритет.",
+    SACN_UNIVERSE_DESCRIPTION: "Вселенная sACN, которую слушает этот порт, 1–63999. По умолчанию 1; у каждого "
+                               "порта свой номер.",
+    ADVANCED_DESCRIPTION: "Тайминги сигнала. Значения по умолчанию подходят большинству приборов; меняйте их, только "
+                          "если прибор мерцает или не реагирует.",
+    SLOTS_DESCRIPTION: "Сколько каналов в каждом кадре. Чем меньше каналов, тем короче кадр, но некоторым приборам "
+                       "нужны все 512. По умолчанию 512.",
+    BREAK_DESCRIPTION: "Низкий уровень, с которого начинается каждый кадр. Увеличьте до 250–400, если приборы "
+                       "теряют начало кадра. По умолчанию 176, стандарт допускает от 88. На линии выходит длиннее "
+                       "на величину до 80 мкс.",
+    MAB_DESCRIPTION: "Пауза между BREAK и первым байтом. Увеличьте до 50–100 для медленных приборов. По умолчанию "
+                     "20, стандарт допускает от 8. На линии выходит длиннее на 40–80 мкс.",
+    SLOT_GAP_DESCRIPTION: "Пауза после каждого канала для приборов, которые не успевают принимать данные и мерцают. "
+                          "Кадр становится длиннее, поэтому частота кадров падает: 50 мкс при 512 каналах дают около "
+                          "16 Гц. Настоящая пауза примерно равна заданной или длиннее. По умолчанию 0: каналы идут "
+                          "вплотную, как у обычных пультов.",
+    DE_DESCRIPTION: "Как включается передатчик RS-485. RTS: сервис сам держит его включённым (порты контроллера и "
+                    "модули WBE2). Ядро: этим занимается драйвер или адаптер (USB-адаптеры DMX). По умолчанию: RTS.",
+    DEVICES_DESCRIPTION: "Строка — один прибор или группа одинаковых. Тип: «Раскладка» для обычных приборов, "
+                         "«Каналы» для всего остального. Раскладка: по букве на DMX-канал в порядке прибора — "
+                         "d диммер, r g b цвет, w белый, a янтарный, u УФ, c холодный белый, h тёплый белый, "
+                         "s строб, m режим (канал программ), _ не используется; например dRGBW; по умолчанию rgbw. "
+                         "Разрядность: 8 бит, или 16 бит, если каждый канал прибора занимает два адреса. Каналов: "
+                         "сколько простых каналов у прибора. Адрес: первый адрес DMX; 0, значение по умолчанию, "
+                         "ставит прибор сразу после предыдущего. Количество: больше 1 даёт столько одинаковых "
+                         "приборов на адресах подряд плюс групповое устройство для всех сразу. MQTT-идентификатор: "
+                         "строится из названия (Фасад → dmx_fasad); заполняйте его, только если нужен конкретный.",
     "Layout": "Раскладка", "Resolution": "Разрядность", "8 bit": "8 бит", "16 bit": "16 бит",
     "MQTT id": "MQTT-идентификатор", "Address": "Адрес", "Device": "Прибор", "Channels": "Каналов",
 }
@@ -103,11 +152,14 @@ def _int(title: str, minimum: int, maximum: int, default: int, order: int, **ext
 def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
     advanced = {
         "type": "object", "title": "Advanced", "propertyOrder": 100, "_format": "grid",
+        "description": ADVANCED_DESCRIPTION,
         "options": {"collapsed": True, "disable_edit_json": True, "disable_properties": True},
         "properties": {
-            "slots": _int("Channels per frame", 24, UNIVERSE_SIZE, UNIVERSE_SIZE, 1, options={"grid_columns": 4}),
-            "break_us": _int("BREAK, µs", 88, 1000, 176, 2, options={"grid_columns": 4}),
-            "mab_us": _int("MAB, µs", 8, 1000, 20, 3, options={"grid_columns": 4}),
+            "slots": _int("Channels per frame", 24, UNIVERSE_SIZE, UNIVERSE_SIZE, 1,
+                          description=SLOTS_DESCRIPTION, options={"grid_columns": 4}),
+            "break_us": _int("BREAK, µs", 88, 1000, 176, 2, description=BREAK_DESCRIPTION,
+                             options={"grid_columns": 4}),
+            "mab_us": _int("MAB, µs", 8, 1000, 20, 3, description=MAB_DESCRIPTION, options={"grid_columns": 4}),
             "slot_gap_us": _int("Pause between channels, µs", 0, MAX_SLOT_GAP_US, 0, 4,
                                 description=SLOT_GAP_DESCRIPTION, options={"grid_columns": 6}),
             "de_control": {"type": "string", "title": "Transmitter enable", "enum": ["rts", "none"],
@@ -115,19 +167,22 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
                            "options": {"enum_titles": ["RTS", "Kernel"], "grid_columns": 6}},
         },
     }
+    # Always open: whether a console may take the port over is a thing to see at a glance
     network = {
         "type": "object", "title": "Network input", "propertyOrder": 50, "_format": "grid",
         "description": NETWORK_DESCRIPTION,
-        "options": {"collapsed": True, "disable_edit_json": True, "disable_properties": True},
+        "options": {"disable_collapse": True, "disable_edit_json": True, "disable_properties": True},
         "properties": {
             "artnet": {"type": "boolean", "title": "Art-Net", "default": False, "_format": "checkbox",
-                       "propertyOrder": 1, "options": {"grid_columns": 3}},
+                       "propertyOrder": 1, "description": ARTNET_DESCRIPTION, "options": {"grid_columns": 6}},
             "artnet_universe": _int("Art-Net port address", 0, ARTNET_MAX_UNIVERSE, 0, 2,
-                                    options={"grid_columns": 3, "dependencies": {"artnet": True}}),
+                                    description=ARTNET_UNIVERSE_DESCRIPTION,
+                                    options={"grid_columns": 6, "dependencies": {"artnet": True}}),
             "sacn": {"type": "boolean", "title": "sACN", "default": False, "_format": "checkbox",
-                     "propertyOrder": 3, "options": {"grid_columns": 3}},
+                     "propertyOrder": 3, "description": SACN_DESCRIPTION, "options": {"grid_columns": 6}},
             "sacn_universe": _int("sACN universe", 1, SACN_MAX_UNIVERSE, 1, 4,
-                                  options={"grid_columns": 3, "dependencies": {"sacn": True}}),
+                                  description=SACN_UNIVERSE_DESCRIPTION,
+                                  options={"grid_columns": 6, "dependencies": {"sacn": True}}),
         },
     }
     settings = {
@@ -141,7 +196,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "path": {"type": "string", "title": "Serial port", "minLength": 1, "default": "/dev/ttyRS485-2",
                      "propertyOrder": 1, "description": PORT_DESCRIPTION, "options": {"grid_columns": 6}},
             "name": {"type": "string", "title": "Name", "default": "DMX 1", "propertyOrder": 2,
-                     "options": {"grid_columns": 6}},
+                     "description": NAME_DESCRIPTION, "options": {"grid_columns": 6}},
             "refresh_hz": _int("Frame rate, Hz", 1, 44, 40, 3, description=REFRESH_DESCRIPTION,
                                options={"grid_columns": 4}),
             "on_start": {"type": "string", "title": "On start", "enum": ["restore", "zero"],
