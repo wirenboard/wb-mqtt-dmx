@@ -141,7 +141,7 @@ class DmxService:
         self._error_text = ""
         for i, port in enumerate(p for p in ports if p.enabled):
             universe = Universe(port.slots)
-            dmx = CheckedPort(port.path, break_us=port.break_us, mab_us=port.mab_us, de_via_rts=port.de_via_rts,
+            dmx = CheckedPort(port.path, break_us=port.break_us, mab_us=port.mab_us,
                               slot_gap_us=port.slot_gap_us, serial_conf=serial_conf)
             sender = FrameSender(universe, dmx, port.refresh_hz, on_state=self._on_sender_state, realtime=realtime)
             rt = PortRuntime(port, sender)

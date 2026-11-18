@@ -107,7 +107,7 @@ def test_every_port_setting_is_explained_in_both_languages():
         text = field.get("description")
         assert text, f"{key} has no caption"
         assert ru.get(text), f"{key}: the caption is not translated"
-    for key in ("refresh_hz", "on_start", "on_stop", "slots", "break_us", "mab_us", "slot_gap_us", "de_control"):
+    for key in ("refresh_hz", "on_start", "on_stop", "slots", "break_us", "mab_us", "slot_gap_us"):
         assert "Default" in fields[key]["description"] and "По умолчанию" in ru[fields[key]["description"]], key
     # the form shows only what the config has: nothing may hide a setting, and the shipped config has them all
     shipped = json.loads((ROOT / "wb-mqtt-dmx.conf").read_text(encoding="utf-8"))

@@ -23,7 +23,8 @@ def test_missing_settings_get_their_defaults_and_nothing_else_changes():
     assert complete_settings(cfg) > 0
     first, second = (p["settings"] for p in cfg["ports"])
     assert first["network"] == {"artnet": False, "sacn": False, "artnet_universe": 0, "sacn_universe": 1}
-    assert first["advanced"] == {"slots": 128, "break_us": 200, "mab_us": 20, "de_control": "rts", "slot_gap_us": 0}
+    # the obsolete transmitter setting goes away: the form would show a leftover key as a nameless field
+    assert first["advanced"] == {"slots": 128, "break_us": 200, "mab_us": 20, "slot_gap_us": 0}
     assert first["enabled"] is True and first["name"] == "DMX 1" and first["refresh_hz"] == 40
     assert second["name"] == "Сцена" and second["refresh_hz"] == 30 and second["enabled"] is False
     assert second["network"]["artnet_universe"] == 1 and second["network"]["sacn_universe"] == 2   # own numbers

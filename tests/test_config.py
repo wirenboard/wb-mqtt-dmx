@@ -12,7 +12,7 @@ TEMPLATES = templates.load_templates([ROOT / "templates"])
 
 def port(path="/dev/ttyRS485-2", devices=(), **settings):
     base = {"enabled": True, "path": path, "name": "DMX", "refresh_hz": 40, "on_start": "restore", "on_stop": "hold",
-            "advanced": {"slots": 512, "break_us": 176, "mab_us": 20, "de_control": "rts"}}
+            "advanced": {"slots": 512, "break_us": 176, "mab_us": 20}}
     base.update(settings)
     return {"settings": base, "devices": list(devices)}
 

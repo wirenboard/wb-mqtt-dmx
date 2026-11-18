@@ -76,7 +76,6 @@ class Port:
     slots: int
     break_us: int
     mab_us: int
-    de_via_rts: bool
     artnet_universe: int | None = None   # network input, None = off
     sacn_universe: int | None = None
     slot_gap_us: int = 0                 # pause between slots for slow receivers, 0 = back to back
@@ -101,11 +100,16 @@ def _int(entry: dict[str, Any], key: str, default: int, low: int, high: int, whe
 
 
 SETTINGS_DEFAULTS = {"enabled": False, "refresh_hz": 40, "on_start": "restore", "on_stop": "hold"}
-ADVANCED_DEFAULTS = {"slots": UNIVERSE_SIZE, "break_us": 176, "mab_us": 20, "slot_gap_us": 0, "de_control": "rts"}
+ADVANCED_DEFAULTS = {"slots": UNIVERSE_SIZE, "break_us": 176, "mab_us": 20, "slot_gap_us": 0}
+# Settings that existed once. The form would show a leftover key as a nameless text field, so they are removed.
+# de_control chose who switches the RS-485 transmitter on; only USB DMX adapters needed "none", and those are
+# not planned: the service always holds the transmitter on through RTS.
+OBSOLETE_ADVANCED = ("de_control",)
 
 
 def complete_settings(config: Any) -> int:
-    """Add the port settings a config lacks, with their defaults; returns how many were added.
+    """Add the port settings a config lacks, with their defaults, and drop the obsolete ones; returns how many
+    keys changed.
 
     The web form shows only the settings present in the file, so a config written by hand or by an older
     version would never offer the newer ones. Devices are left alone: the table shows every column anyway.
@@ -124,6 +128,10 @@ def complete_settings(config: Any) -> int:
                 added += 1
             if isinstance(settings[key], dict):
                 blocks.append((settings[key], defaults))
+        if isinstance(settings["advanced"], dict):
+            for key in OBSOLETE_ADVANCED:
+                if settings["advanced"].pop(key, None) is not None:
+                    added += 1
         for block, defaults in blocks:
             for key, value in defaults.items():
                 if key not in block:
@@ -149,9 +157,6 @@ def _port(entry: dict[str, Any], n: int) -> Port:
         raise ConfigError(f"{where}: on_start must be restore or zero")
     if on_stop not in ("hold", "blackout"):
         raise ConfigError(f"{where}: on_stop must be hold or blackout")
-    de = str(adv.get("de_control") or "rts")
-    if de not in ("rts", "none"):
-        raise ConfigError(f"{where}: de_control must be rts or none")
     net = settings.get("network") or {}
     if not isinstance(net, dict):
         raise ConfigError(f"{where}: network must be an object")
@@ -163,7 +168,7 @@ def _port(entry: dict[str, Any], n: int) -> Port:
         refresh_hz=_int(settings, "refresh_hz", 40, 1, 44, where), on_start=on_start, on_stop=on_stop,
         slots=_int(adv, "slots", UNIVERSE_SIZE, 24, UNIVERSE_SIZE, where),
         break_us=_int(adv, "break_us", 176, 88, 1000, where), mab_us=_int(adv, "mab_us", 20, 8, 1000, where),
-        de_via_rts=de == "rts", artnet_universe=artnet, sacn_universe=sacn,
+        artnet_universe=artnet, sacn_universe=sacn,
         slot_gap_us=_int(adv, "slot_gap_us", 0, 0, MAX_SLOT_GAP_US, where),
     )
 

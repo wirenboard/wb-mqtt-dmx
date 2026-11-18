@@ -61,8 +61,6 @@ SLOT_GAP_DESCRIPTION = ("A pause after every channel for fixtures that cannot ke
                         "The frame gets longer, so the frame rate drops: 50 µs at 512 channels gives about 16 Hz. "
                         "The real pause is about the set value or longer. Default 0: channels go back to back, as "
                         "ordinary consoles send them.")
-DE_DESCRIPTION = ("How the RS-485 transmitter is switched on. RTS: the service holds it on itself (controller ports "
-                  "and WBE2 modules). Kernel: the driver or the adapter does it (USB DMX adapters). Default: RTS.")
 DEVICES_DESCRIPTION = ("One row is one fixture or a group of identical ones. Type: Layout for ordinary fixtures, "
                        "Channels for anything else. Layout: one letter per DMX channel in the fixture's order — "
                        "d dimmer, r g b colour, w white, a amber, u UV, c cold white, h warm white, s strobe, "
@@ -87,9 +85,8 @@ RU = {
     "On stop": "При остановке", "Restore last values": "Восстановить последние значения",
     "All channels 0": "Все каналы в 0", "Hold last frame": "Оставить как есть",
     "Blackout": "Погасить всё", "Advanced": "Дополнительно", "Channels per frame": "Каналов в кадре",
-    "BREAK, µs": "BREAK, мкс", "MAB, µs": "MAB, мкс", "Transmitter enable": "Включение передатчика",
+    "BREAK, µs": "BREAK, мкс", "MAB, µs": "MAB, мкс",
     "Pause between channels, µs": "Пауза между каналами, мкс",
-    "RTS": "RTS", "Kernel": "Ядро",
     "Devices": "Приборы", "Device id": "Идентификатор", "Type": "Тип", "Start address": "Стартовый адрес",
     "Count": "Количество",
     PORT_DESCRIPTION: "Порт RS-485, к которому подключена линия DMX: /dev/ttyRS485-1, /dev/ttyRS485-2 или порт "
@@ -130,8 +127,6 @@ RU = {
                           "Кадр становится длиннее, поэтому частота кадров падает: 50 мкс при 512 каналах дают около "
                           "16 Гц. Настоящая пауза примерно равна заданной или длиннее. По умолчанию 0: каналы идут "
                           "вплотную, как у обычных пультов.",
-    DE_DESCRIPTION: "Как включается передатчик RS-485. RTS: сервис сам держит его включённым (порты контроллера и "
-                    "модули WBE2). Ядро: этим занимается драйвер или адаптер (USB-адаптеры DMX). По умолчанию: RTS.",
     DEVICES_DESCRIPTION: "Строка — один прибор или группа одинаковых. Тип: «Раскладка» для обычных приборов, "
                          "«Каналы» для всего остального. Раскладка: по букве на DMX-канал в порядке прибора — "
                          "d диммер, r g b цвет, w белый, a янтарный, u УФ, c холодный белый, h тёплый белый, "
@@ -167,10 +162,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
                              options={"grid_columns": 4}),
             "mab_us": _int("MAB, µs", 8, 1000, 20, 3, description=MAB_DESCRIPTION, options={"grid_columns": 4}),
             "slot_gap_us": _int("Pause between channels, µs", 0, MAX_SLOT_GAP_US, 0, 4,
-                                description=SLOT_GAP_DESCRIPTION, options={"grid_columns": 6}),
-            "de_control": {"type": "string", "title": "Transmitter enable", "enum": ["rts", "none"],
-                           "default": "rts", "propertyOrder": 5, "description": DE_DESCRIPTION,
-                           "options": {"enum_titles": ["RTS", "Kernel"], "grid_columns": 6}},
+                                description=SLOT_GAP_DESCRIPTION, options={"grid_columns": 12}),
         },
     }
     # Always open: whether a console may take the port over is a thing to see at a glance
