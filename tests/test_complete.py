@@ -59,7 +59,7 @@ def test_config_file_is_completed_in_place(tmp_path, capsys):
     path = tmp_path / "wb-mqtt-dmx.conf"
     path.write_text(json.dumps(old_config(), ensure_ascii=False), encoding="utf-8")
     assert complete_config_file(path) > 0
-    assert "missing setting" in capsys.readouterr().out
+    assert "current format" in capsys.readouterr().out
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert saved["ports"][0]["settings"]["advanced"]["slot_gap_us"] == 0 and saved["ports"][1]["settings"]["name"] == "Сцена"
     before = path.read_text(encoding="utf-8")

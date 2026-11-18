@@ -98,7 +98,7 @@ def complete_config_file(path: Path) -> int:
             tmp = path.with_name(path.name + ".tmp")
             tmp.write_text(json.dumps(config, ensure_ascii=False, indent=4) + "\n", encoding="utf-8")
             tmp.replace(path)
-            print(f"{path}: added {added} missing setting(s) with their defaults")
+            print(f"{path}: brought {added} setting(s) to the current format")
         return added
     except (OSError, ValueError) as e:
         print(f"{path}: left as is ({e})", file=sys.stderr)
