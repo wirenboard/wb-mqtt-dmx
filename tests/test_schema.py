@@ -90,10 +90,12 @@ def test_schema_lists_template_types_with_titles_and_translations():
     assert port["title"] == "Port" and s["translations"]["ru"]["Ports"] == "Порты"
     assert s["properties"]["ports"]["_format"] == "tabs-top" and port["properties"]["devices"]["_format"] == "table"
     settings = port["properties"]["settings"]["properties"]
-    assert settings["enabled"]["propertyOrder"] == 0 and settings["enabled"]["default"] is False
+    assert "enabled" not in settings                     # the checkbox sits above the collapsed settings
+    assert port["properties"]["enabled"]["propertyOrder"] == 0 and port["properties"]["enabled"]["default"] is False
+    assert s["translations"]["ru"][port["properties"]["enabled"]["description"]]
     shipped = json.loads((ROOT / "wb-mqtt-dmx.conf").read_text(encoding="utf-8"))
     assert [p["settings"]["path"] for p in shipped["ports"]] == ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]
-    assert not any(p["settings"]["enabled"] for p in shipped["ports"])
+    assert not any(p["enabled"] for p in shipped["ports"])
     assert adv["options"]["collapsed"] is True and "start_scene" not in adv["properties"]
 
 

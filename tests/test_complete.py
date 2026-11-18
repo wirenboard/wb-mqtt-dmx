@@ -25,8 +25,12 @@ def test_missing_settings_get_their_defaults_and_nothing_else_changes():
     assert first["network"] == {"artnet": False, "sacn": False, "artnet_universe": 0, "sacn_universe": 1}
     # the obsolete transmitter setting goes away: the form would show a leftover key as a nameless field
     assert first["advanced"] == {"slots": 128, "break_us": 200, "mab_us": 20, "slot_gap_us": 0}
-    assert first["enabled"] is True and first["name"] == "DMX 1" and first["refresh_hz"] == 40
-    assert second["name"] == "Сцена" and second["refresh_hz"] == 30 and second["enabled"] is False
+    assert first["name"] == "DMX 1" and first["refresh_hz"] == 40
+    assert second["name"] == "Сцена" and second["refresh_hz"] == 30
+    # "enabled" moves from the settings to the port itself and keeps its value
+    assert "enabled" not in first and "enabled" not in second
+    assert [p["enabled"] for p in cfg["ports"]] == [True, False]
+    assert [p.enabled for p in load_config(cfg, TEMPLATES)] == [True, False]
     assert second["network"]["artnet_universe"] == 1 and second["network"]["sacn_universe"] == 2   # own numbers
     assert second["advanced"]["slots"] == 512
     assert cfg["ports"][0]["devices"] == [{"name": "Пар", "type": "layout", "layout": "rgb"}]
@@ -40,6 +44,7 @@ def test_completed_config_has_every_setting_of_the_form():
     form = schema.build_schema(TEMPLATES)["properties"]["ports"]["items"]["properties"]["settings"]["properties"]
     for port in cfg["ports"]:
         settings = port["settings"]
+        assert sorted(port) == ["devices", "enabled", "settings"]
         assert sorted(settings) == sorted(form)
         assert sorted(settings["network"]) == sorted(form["network"]["properties"])
         assert sorted(settings["advanced"]) == sorted(form["advanced"]["properties"])

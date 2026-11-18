@@ -99,7 +99,7 @@ def _int(entry: dict[str, Any], key: str, default: int, low: int, high: int, whe
     return value
 
 
-SETTINGS_DEFAULTS = {"enabled": False, "refresh_hz": 40, "on_start": "restore", "on_stop": "hold"}
+SETTINGS_DEFAULTS = {"refresh_hz": 40, "on_start": "restore", "on_stop": "hold"}
 ADVANCED_DEFAULTS = {"slots": UNIVERSE_SIZE, "break_us": 176, "mab_us": 20, "slot_gap_us": 0}
 # Settings that existed once. The form would show a leftover key as a nameless text field, so they are removed.
 # de_control chose who switches the RS-485 transmitter on; only USB DMX adapters needed "none", and those are
@@ -120,6 +120,13 @@ def complete_settings(config: Any) -> int:
         settings = entry.get("settings") if isinstance(entry, dict) else None
         if not isinstance(settings, dict):
             continue
+        # "enabled" used to live inside the settings; it is a field of the port itself now
+        was = settings.pop("enabled", None)
+        if "enabled" not in entry:
+            entry["enabled"] = bool(was)
+            added += 1
+        elif was is not None:
+            added += 1
         blocks = [(settings, {**SETTINGS_DEFAULTS, "name": f"DMX {n}"})]
         for key, defaults in (("network", {"artnet": False, "artnet_universe": n - 1, "sacn": False,
                                            "sacn_universe": n}), ("advanced", ADVANCED_DEFAULTS)):
@@ -164,7 +171,8 @@ def _port(entry: dict[str, Any], n: int) -> Port:
     artnet = _int(net, "artnet_universe", n - 1, 0, ARTNET_MAX_UNIVERSE, where) if net.get("artnet") else None
     sacn = _int(net, "sacn_universe", n, 1, SACN_MAX_UNIVERSE, where) if net.get("sacn") else None
     return Port(
-        path=path, name=str(settings.get("name") or path), enabled=bool(settings.get("enabled", False)),
+        path=path, name=str(settings.get("name") or path),
+        enabled=bool(entry.get("enabled", settings.get("enabled", False))),   # the old place still works
         refresh_hz=_int(settings, "refresh_hz", 40, 1, 44, where), on_start=on_start, on_stop=on_stop,
         slots=_int(adv, "slots", UNIVERSE_SIZE, 24, UNIVERSE_SIZE, where),
         break_us=_int(adv, "break_us", 176, 88, 1000, where), mab_us=_int(adv, "mab_us", 20, 8, 1000, where),

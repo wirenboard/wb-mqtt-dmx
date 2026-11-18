@@ -187,8 +187,6 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "headerTemplate": "{{self.path}} · {{self.refresh_hz}} Hz · {{self.on_start}} / {{self.on_stop}}",
         "options": {"collapsed": True, "disable_edit_json": True, "disable_properties": True},
         "properties": {
-            "enabled": {"type": "boolean", "title": "Enabled", "default": False, "_format": "checkbox",
-                        "propertyOrder": 0, "description": ENABLED_DESCRIPTION, "options": {"grid_columns": 12}},
             "path": {"type": "string", "title": "Serial port", "minLength": 1, "default": "/dev/ttyRS485-2",
                      "propertyOrder": 1, "description": PORT_DESCRIPTION, "options": {"grid_columns": 6}},
             "name": {"type": "string", "title": "Name", "default": "DMX 1", "propertyOrder": 2,
@@ -212,6 +210,9 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
         "title": "Port",
         "headerTemplate": "{{self.settings.name}} ({{self.settings.path}})",
         "properties": {
+            # Above the collapsed settings: whether the port sends at all is the first thing to see
+            "enabled": {"type": "boolean", "title": "Enabled", "default": False, "_format": "checkbox",
+                        "propertyOrder": 0, "description": ENABLED_DESCRIPTION},
             "settings": settings,
             "devices": {
                 "type": "array", "title": "Devices", "propertyOrder": 2, "_format": "table",
