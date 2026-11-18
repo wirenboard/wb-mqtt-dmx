@@ -100,6 +100,38 @@ def _int(entry: dict[str, Any], key: str, default: int, low: int, high: int, whe
     return value
 
 
+SETTINGS_DEFAULTS = {"enabled": False, "refresh_hz": 40, "on_start": "restore", "on_stop": "hold"}
+ADVANCED_DEFAULTS = {"slots": UNIVERSE_SIZE, "break_us": 176, "mab_us": 20, "slot_gap_us": 0, "de_control": "rts"}
+
+
+def complete_settings(config: Any) -> int:
+    """Add the port settings a config lacks, with their defaults; returns how many were added.
+
+    The web form shows only the settings present in the file, so a config written by hand or by an older
+    version would never offer the newer ones. Devices are left alone: the table shows every column anyway.
+    """
+    added = 0
+    ports = config.get("ports") if isinstance(config, dict) else None
+    for n, entry in enumerate(ports if isinstance(ports, list) else [], start=1):
+        settings = entry.get("settings") if isinstance(entry, dict) else None
+        if not isinstance(settings, dict):
+            continue
+        blocks = [(settings, {**SETTINGS_DEFAULTS, "name": f"DMX {n}"})]
+        for key, defaults in (("network", {"artnet": False, "artnet_universe": n - 1, "sacn": False,
+                                           "sacn_universe": n}), ("advanced", ADVANCED_DEFAULTS)):
+            if key not in settings:
+                settings[key] = {}
+                added += 1
+            if isinstance(settings[key], dict):
+                blocks.append((settings[key], defaults))
+        for block, defaults in blocks:
+            for key, value in defaults.items():
+                if key not in block:
+                    block[key] = value
+                    added += 1
+    return added
+
+
 def _port(entry: dict[str, Any], n: int) -> Port:
     settings = entry.get("settings")
     if not isinstance(settings, dict):

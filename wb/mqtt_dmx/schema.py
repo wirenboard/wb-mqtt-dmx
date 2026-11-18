@@ -152,8 +152,10 @@ def _int(title: str, minimum: int, maximum: int, default: int, order: int, **ext
 
 
 def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
-    # Every setting is "required": the form drops an optional field that the saved config lacks, and then
-    # there is no way to bring it back (seen with the Art-Net address and with settings added later).
+    # The form does not show a setting that the saved config lacks, and there is no way to bring it back.
+    # Marking the settings "required" is no cure: confed then refuses to open such a config at all. So the
+    # settings stay optional here, nothing hides them (no dependencies), and `update-schema` adds what a
+    # config written by an older version is missing (config.complete_settings).
     advanced = {
         "type": "object", "title": "Advanced", "propertyOrder": 100, "_format": "grid",
         "description": ADVANCED_DESCRIPTION,
@@ -170,7 +172,6 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
                            "default": "rts", "propertyOrder": 5, "description": DE_DESCRIPTION,
                            "options": {"enum_titles": ["RTS", "Kernel"], "grid_columns": 6}},
         },
-        "required": ["slots", "break_us", "mab_us", "slot_gap_us", "de_control"],
     }
     # Always open: whether a console may take the port over is a thing to see at a glance
     network = {
@@ -187,7 +188,6 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "sacn_universe": _int("sACN universe", 1, SACN_MAX_UNIVERSE, 1, 4,
                                   description=SACN_UNIVERSE_DESCRIPTION, options={"grid_columns": 6}),
         },
-        "required": ["artnet", "artnet_universe", "sacn", "sacn_universe"],
     }
     settings = {
         "type": "object", "title": "Port settings", "propertyOrder": 1, "_format": "grid",
@@ -213,7 +213,7 @@ def port_schema(templates: dict[str, Template]) -> dict[str, Any]:
             "network": network,
             "advanced": advanced,
         },
-        "required": ["enabled", "path", "name", "refresh_hz", "on_start", "on_stop", "network", "advanced"],
+        "required": ["path"],
     }
     return {
         "type": "object",

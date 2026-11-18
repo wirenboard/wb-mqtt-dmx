@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 from . import schema, templates
-from .config import ConfigError, load_config
+from .config import ConfigError, complete_settings, load_config
 from .dmx_port import DmxPort
 from .sender import FrameSender, Universe
 
@@ -84,7 +84,26 @@ def cmd_update_schema(args: argparse.Namespace) -> int:
         return 6
     changed = schema.write_schema(schema.build_schema(loaded), Path(args.schema))
     print(f"{args.schema}: {len(loaded)} type(s): {', '.join(sorted(loaded))}" + ("" if changed else " (unchanged)"))
+    complete_config_file(Path(args.config))
     return 0
+
+
+def complete_config_file(path: Path) -> int:
+    """Give the config the port settings it lacks, so that the form shows all of them. Never fatal."""
+    if not path.exists():
+        return 0
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+        added = complete_settings(config)
+        if added:
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps(config, ensure_ascii=False, indent=4) + "\n", encoding="utf-8")
+            tmp.replace(path)
+            print(f"{path}: added {added} missing setting(s) with their defaults")
+        return added
+    except (OSError, ValueError) as e:
+        print(f"{path}: left as is ({e})", file=sys.stderr)
+        return 0
 
 
 def run_service(args: argparse.Namespace) -> int:
