@@ -3,13 +3,11 @@ import pytest
 from wb.mqtt_dmx import dmx_port as dp
 from wb.mqtt_dmx.sender import FRAME_MARGIN, FrameSender, Universe
 
-from .fakes import PORT_PATH, FakeOps
+from .fakes import FakeOps, fake_port
 
 
 def sender_on(ops: FakeOps, universe: Universe, **port_settings: int) -> FrameSender:
-    sender = FrameSender(
-        universe, dp.DmxPort(PORT_PATH, ops=ops, **port_settings), refresh_hz=40, realtime=False
-    )
+    sender = FrameSender(universe, fake_port(ops, **port_settings), refresh_hz=40, realtime=False)
     sender.clock, sender.sleep = ops.monotonic, ops.sleep
     return sender
 
@@ -36,7 +34,7 @@ def test_sender_streams_the_universe() -> None:
 
 
 def test_sender_reports_a_port_that_does_not_open() -> None:
-    sender = FrameSender(Universe(), dp.DmxPort("/dev/nope", ops=FakeOps(fail_open=True)), realtime=False)
+    sender = FrameSender(Universe(), fake_port(FakeOps(fail_open=True), "/dev/nope"), realtime=False)
     sender.sleep = lambda _seconds: sender.stop()  # the first idle sleep after the failure ends the loop
     sender.run()
 

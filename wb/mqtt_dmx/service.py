@@ -171,7 +171,6 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
         self,
         ports: list[Port],
         client_factory: ClientFactory = _default_client_factory,
-        serial_conf: Path = WB_MQTT_SERIAL_CONF,
         state_path: Path = STATE_PATH,
         realtime: bool = True,
     ) -> None:
@@ -186,15 +185,10 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
         for port in (p for p in ports if p.enabled):
             universe = Universe(port.slots)
             dmx = CheckedPort(
-                port.path,
-                break_us=port.break_us,
-                mab_us=port.mab_us,
-                slot_gap_us=port.slot_gap_us,
-                serial_conf=serial_conf,
+                port.path, break_us=port.break_us, mab_us=port.mab_us, slot_gap_us=port.slot_gap_us
             )
-            sender = FrameSender(
-                universe, dmx, port.refresh_hz, on_state=self._on_sender_state, realtime=realtime
-            )
+            sender = FrameSender(universe, dmx, port.refresh_hz, realtime=realtime)
+            sender.on_state = self._on_sender_state
             rt = PortRuntime(port, sender)
             self._runtimes[port.path] = rt
             for target in [*port.groups, *port.devices]:

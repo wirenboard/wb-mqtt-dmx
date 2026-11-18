@@ -4,12 +4,12 @@ import pytest
 
 from wb.mqtt_dmx import dmx_port as dp
 
-from .fakes import PORT_PATH, FakeOps
+from .fakes import FakeOps, fake_port
 
 
 def test_open_sets_the_line_to_250000_8n2() -> None:
     ops = FakeOps()
-    dp.DmxPort(PORT_PATH, ops=ops).open()
+    fake_port(ops).open()
 
     cflag, ospeed = (
         struct.unpack(dp.TERMIOS2_FMT, ops.termios)[2],
@@ -22,7 +22,7 @@ def test_open_sets_the_line_to_250000_8n2() -> None:
 
 def test_open_takes_the_transmitter_from_the_kernel_and_holds_it() -> None:
     ops = FakeOps()
-    dp.DmxPort(PORT_PATH, ops=ops).open()
+    fake_port(ops).open()
 
     assert struct.unpack("I", ops.rs485[:4])[0] & dp.SER_RS485_ENABLED == 0
     assert ("ioctl", dp.TIOCMBIS, struct.pack("i", dp.TIOCM_RTS)) in ops.calls
@@ -30,7 +30,7 @@ def test_open_takes_the_transmitter_from_the_kernel_and_holds_it() -> None:
 
 def test_close_gives_the_port_back_as_it_was() -> None:
     ops = FakeOps()
-    port = dp.DmxPort(PORT_PATH, ops=ops)
+    port = fake_port(ops)
     port.open()
     port.close()
 
@@ -43,12 +43,12 @@ def test_close_gives_the_port_back_as_it_was() -> None:
 
 def test_open_failure_is_a_port_error() -> None:
     with pytest.raises(dp.DmxPortError, match="No such file"):
-        dp.DmxPort("/dev/nope", ops=FakeOps(fail_open=True)).open()
+        fake_port(FakeOps(fail_open=True), "/dev/nope").open()
 
 
 def test_frame_is_break_mab_start_code_and_slots() -> None:
     ops = FakeOps()
-    port = dp.DmxPort(PORT_PATH, break_us=176, mab_us=20, ops=ops)
+    port = fake_port(ops, break_us=176, mab_us=20)
     port.open()
     ops.calls.clear()
     port.send_frame(bytes([1, 2, 3]))
@@ -64,7 +64,7 @@ def test_frame_is_break_mab_start_code_and_slots() -> None:
 
 def test_next_frame_waits_for_the_previous_one_to_leave_the_uart() -> None:
     ops = FakeOps()
-    port = dp.DmxPort(PORT_PATH, ops=ops)
+    port = fake_port(ops)
     port.open()
     port.send_frame(bytes([1]))
     ops.calls.clear()
@@ -76,19 +76,19 @@ def test_next_frame_waits_for_the_previous_one_to_leave_the_uart() -> None:
 
 
 def test_timings_are_clamped_to_the_standard_minimum() -> None:
-    port = dp.DmxPort("/dev/x", break_us=10, mab_us=1, ops=FakeOps())
+    port = fake_port(FakeOps(), break_us=10, mab_us=1)
 
     assert (port.break_us, port.mab_us) == (dp.MIN_BREAK_US, dp.MIN_MAB_US)
 
 
 @pytest.mark.parametrize("asked, used", [(0, 0), (50, 50), (99999, dp.MAX_SLOT_GAP_US), (-5, 0)])
 def test_pause_between_slots_is_clamped(asked: int, used: int) -> None:
-    assert dp.DmxPort("/dev/x", ops=FakeOps(), slot_gap_us=asked).slot_gap_us == used
+    assert fake_port(FakeOps(), slot_gap_us=asked).slot_gap_us == used
 
 
 def test_with_a_pause_the_frame_goes_out_byte_by_byte() -> None:
     ops = FakeOps()
-    port = dp.DmxPort(PORT_PATH, ops=ops, slot_gap_us=50)
+    port = fake_port(ops, slot_gap_us=50)
     port.open()
     ops.calls.clear()
     port.send_frame(bytes([1, 2]))
@@ -105,8 +105,8 @@ def test_with_a_pause_the_frame_goes_out_byte_by_byte() -> None:
 
 
 def test_frame_time_grows_with_the_pause() -> None:
-    plain = dp.DmxPort("/dev/x", ops=FakeOps())
-    slow = dp.DmxPort("/dev/x", ops=FakeOps(), slot_gap_us=50)
+    plain = fake_port(FakeOps())
+    slow = fake_port(FakeOps(), slot_gap_us=50)
 
     assert plain.frame_time_s(512) == pytest.approx((176 + 20 + 513 * 44) / 1e6)
     assert slow.frame_time_s(512) == pytest.approx((176 + 20 + 513 * (44 + 50 + dp.SLEEP_JITTER_US)) / 1e6)

@@ -114,7 +114,6 @@ class FrameSender:  # pylint: disable=too-many-instance-attributes
         universe: Universe,
         port: DmxPort,
         refresh_hz: int = 40,
-        on_state: Optional[Callable[["FrameSender"], None]] = None,
         realtime: bool = True,
     ) -> None:
         self.universe = universe
@@ -126,7 +125,8 @@ class FrameSender:  # pylint: disable=too-many-instance-attributes
         self.slot_gap = bool(getattr(port, "slot_gap_us", 0))
         if self.slot_gap:
             self.period = max(self.period, port.frame_time_s(universe.slots) * FRAME_MARGIN)
-        self.on_state = on_state
+        # Called when the port starts or stops working; the service sets it to refresh the status
+        self.on_state: Optional[Callable[["FrameSender"], None]] = None
         # Tests replace these two to run the loop without waiting
         self.clock: Callable[[], float] = time.monotonic
         self.sleep: Callable[[float], None] = time.sleep

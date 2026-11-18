@@ -81,6 +81,15 @@ class FakeOps(dp.PortOps):
         return [call[1] for call in self.calls if call[0] == "ioctl"]
 
 
+def fake_port(ops: FakeOps, path: str = PORT_PATH, **settings: int) -> dp.DmxPort:
+    """
+    A DMX port that talks to the fake instead of a serial device.
+    """
+    port = dp.DmxPort(path, **settings)
+    port.ops = ops
+    return port
+
+
 class FakeClient:
     """
     An MQTT client that keeps what was published, by topic.
@@ -140,7 +149,6 @@ def make_service(
     service = DmxService(
         load_config(config),
         client_factory=factory,
-        serial_conf=tmp_path / "serial.conf",
         state_path=tmp_path / "state.json",
         realtime=False,
     )

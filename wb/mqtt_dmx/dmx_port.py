@@ -130,14 +130,7 @@ class DmxPort:  # pylint: disable=too-many-instance-attributes
     One DMX universe on one serial port. Not thread-safe: one sender per port.
     """
 
-    def __init__(
-        self,
-        path: str,
-        break_us: int = 176,
-        mab_us: int = 20,
-        ops: Optional[PortOps] = None,
-        slot_gap_us: int = 0,
-    ) -> None:
+    def __init__(self, path: str, break_us: int = 176, mab_us: int = 20, slot_gap_us: int = 0) -> None:
         self.path = path
         self.break_us = max(MIN_BREAK_US, int(break_us))
         self.mab_us = max(MIN_MAB_US, int(mab_us))
@@ -146,7 +139,7 @@ class DmxPort:  # pylint: disable=too-many-instance-attributes
         # would be more exact, but it holds the interpreter lock and starves the frame threads of the other
         # ports (measured: a port without a pause fell from 40 to 17 Hz).
         self.slot_gap_us = max(0, min(MAX_SLOT_GAP_US, int(slot_gap_us)))
-        self.ops = ops or PortOps()
+        self.ops = PortOps()  # tests put a fake here
         self.fd: Optional[int] = None
         self.frames = 0
         self.drain_fallbacks = 0
