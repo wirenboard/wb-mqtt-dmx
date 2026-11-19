@@ -1,7 +1,7 @@
 """
 Command line entry point of wb-mqtt-dmx.
 
-wb-mqtt-dmx [-c /etc/wb-mqtt-dmx.conf] [--no-rt]
+wb-mqtt-dmx [-c /etc/wb-mqtt-dmx.conf]
     run the service (what the systemd unit does)
 wb-mqtt-dmx test-port /dev/ttyRS485-2 [--seconds 10] [--pattern blink|full|ramp] [--hz 40] [--slots 512]
     stream a test pattern on a serial port; no MQTT, no config — for a scope and a decoder
@@ -73,7 +73,7 @@ def pattern_frame(pattern: str, slots: int, second: int) -> bytes:
 def cmd_test_port(args: argparse.Namespace) -> int:
     universe = Universe(args.slots)
     port = DmxPort(args.port, break_us=args.break_us, mab_us=args.mab_us, slot_gap_us=args.slot_gap_us)
-    sender = FrameSender(universe, port, args.hz, realtime=not args.no_rt)
+    sender = FrameSender(universe, port, args.hz)
     universe.write(1, pattern_frame(args.pattern, args.slots, 0))
     frames = int(args.seconds * sender.refresh_hz)
     print(
@@ -123,9 +123,7 @@ def run_service(args: argparse.Namespace) -> int:
         ports = load_config(config)
     except (ConfigError, TypeError, AttributeError) as e:
         return config_error(str(e))
-    service = DmxService(
-        ports, state_path=Path(args.state) if args.state else STATE_PATH, realtime=not args.no_rt
-    )
+    service = DmxService(ports, state_path=Path(args.state) if args.state else STATE_PATH)
     service.install_signal_handlers()
     return service.run()
 
@@ -138,7 +136,6 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("-c", "--config", default=CONFIG_PATH, help="configuration file (run)")
     parser.add_argument("--state", help="where channel values are saved for 'restore' (run)")
-    parser.add_argument("--no-rt", action="store_true", help="do not request SCHED_FIFO for the frame loops")
     sub = parser.add_subparsers(dest="command")
     p = sub.add_parser("test-port", help="stream a test pattern on a serial port (no MQTT)")
     p.add_argument("port", help="serial port, e.g. /dev/ttyRS485-2")

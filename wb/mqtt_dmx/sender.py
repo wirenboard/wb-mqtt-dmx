@@ -9,7 +9,6 @@ closed and reopened every RETRY_S while the grid keeps running.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from dataclasses import dataclass
@@ -22,38 +21,12 @@ LOG = logging.getLogger("wb-mqtt-dmx")
 UNIVERSE_SIZE = 512
 MAX_REFRESH_HZ = 44  # 513 bytes × 44 µs + BREAK + MAB ≈ 22.8 ms: the DMX maximum for 512 slots
 RETRY_S = 5.0
-RT_PRIORITY = 10  # SCHED_FIFO priority of the frame thread; modest, below kernel threads
 STATS_WINDOW_S = 2.0
 STALL_LOG_S = 0.010  # a frame starting this late against the grid is logged
 FRAME_MARGIN = 1.05  # idle line between frames when the period is set by the frame length
 # Right after the port opens the first frames start late (the open itself, the first BREAK). That is not a
 # fault of the line, so lateness is neither counted nor logged until this many frames have gone out.
 WARMUP_FRAMES = 10
-MCL_CURRENT, MCL_FUTURE = 1, 2
-
-
-def try_realtime(priority: int = RT_PRIORITY) -> str:
-    """
-    Give the calling thread SCHED_FIFO and lock memory; returns what happened for the log.
-
-    Only the frame thread is affected (sched_setscheduler with pid 0 acts on the calling thread
-    on Linux). Needs root or CAP_SYS_NICE; on failure the thread simply stays on CFS.
-    """
-    if not hasattr(os, "sched_setscheduler"):
-        return "no sched_setscheduler on this platform"
-    try:
-        os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(priority))
-    except OSError as e:
-        return f"SCHED_FIFO refused: {e.strerror or e}"
-    try:
-        import ctypes  # pylint: disable=import-outside-toplevel
-
-        libc = ctypes.CDLL(None, use_errno=True)
-        if libc.mlockall(MCL_CURRENT | MCL_FUTURE) != 0:
-            return f"SCHED_FIFO {priority}, mlockall failed: errno {ctypes.get_errno()}"
-    except (OSError, AttributeError) as e:
-        return f"SCHED_FIFO {priority}, mlockall unavailable: {e}"
-    return f"SCHED_FIFO {priority} + mlockall"
 
 
 class Universe:
@@ -114,7 +87,6 @@ class FrameSender:  # pylint: disable=too-many-instance-attributes
         universe: Universe,
         port: DmxPort,
         refresh_hz: int = 40,
-        realtime: bool = True,
     ) -> None:
         self.universe = universe
         self.port = port
@@ -130,7 +102,6 @@ class FrameSender:  # pylint: disable=too-many-instance-attributes
         # Tests replace these two to run the loop without waiting
         self.clock: Callable[[], float] = time.monotonic
         self.sleep: Callable[[float], None] = time.sleep
-        self.realtime = realtime
         self.running = False
         self.error = ""
         self.frames = 0
@@ -164,8 +135,6 @@ class FrameSender:  # pylint: disable=too-many-instance-attributes
         Args:
             max_frames: Stop after this many frames; for test-port and tests.
         """
-        if self.realtime:
-            LOG.info("%s: scheduling: %s", self.port.path, try_realtime())
         if self.slot_gap:
             LOG.info(
                 "%s: %d us between slots: a frame takes about %.1f ms, refresh about %.1f Hz",
@@ -198,7 +167,9 @@ class FrameSender:  # pylint: disable=too-many-instance-attributes
         if now < grid.next_frame:
             self.sleep(grid.next_frame - now)
             now = self.clock()
-        if self.running and self.frames >= grid.warm_after:
+        # With a pause between slots the period follows what a frame takes, so there is no fixed grid
+        # to be late against.
+        if self.running and not self.slot_gap and self.frames >= grid.warm_after:
             late = now - grid.next_frame
             self.max_late_us = max(self.max_late_us, late * 1e6)
             if late > self.period / 2:

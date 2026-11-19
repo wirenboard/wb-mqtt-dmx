@@ -172,7 +172,6 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
         ports: list[Port],
         client_factory: ClientFactory = _default_client_factory,
         state_path: Path = STATE_PATH,
-        realtime: bool = True,
     ) -> None:
         self._ports = ports
         self._state_path = state_path
@@ -190,7 +189,7 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
             dmx = CheckedPort(
                 port.path, break_us=port.break_us, mab_us=port.mab_us, slot_gap_us=port.slot_gap_us
             )
-            sender = FrameSender(universe, dmx, port.refresh_hz, realtime=realtime)
+            sender = FrameSender(universe, dmx, port.refresh_hz)
             sender.on_state = self._on_sender_state
             rt = PortRuntime(port, sender)
             self._runtimes[port.path] = rt

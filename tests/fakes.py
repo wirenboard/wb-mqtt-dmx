@@ -152,7 +152,6 @@ def make_service(
         load_config(config),
         client_factory=factory,
         state_path=tmp_path / "state.json",
-        realtime=False,
     )
     clients[0].start()  # publishes everything, as a real connect would
     return service, clients[0].topics

@@ -1,13 +1,13 @@
 import pytest
 
 from wb.mqtt_dmx import dmx_port as dp
-from wb.mqtt_dmx.sender import FRAME_MARGIN, FrameSender, Universe
+from wb.mqtt_dmx.sender import FRAME_MARGIN, WARMUP_FRAMES, FrameSender, Universe
 
 from .fakes import FakeOps, fake_port
 
 
 def sender_on(ops: FakeOps, universe: Universe, **port_settings: int) -> FrameSender:
-    sender = FrameSender(universe, fake_port(ops, **port_settings), refresh_hz=40, realtime=False)
+    sender = FrameSender(universe, fake_port(ops, **port_settings), refresh_hz=40)
     sender.clock, sender.sleep = ops.monotonic, ops.sleep
     return sender
 
@@ -34,7 +34,7 @@ def test_sender_streams_the_universe() -> None:
 
 
 def test_sender_reports_a_port_that_does_not_open() -> None:
-    sender = FrameSender(Universe(), fake_port(FakeOps(fail_open=True), "/dev/nope"), realtime=False)
+    sender = FrameSender(Universe(), fake_port(FakeOps(fail_open=True), "/dev/nope"))
     sender.sleep = lambda _seconds: sender.stop()  # the first idle sleep after the failure ends the loop
     sender.run()
 
@@ -65,3 +65,34 @@ def test_period_then_follows_what_a_frame_really_takes() -> None:
 
     took = (176 + 20) / 1e6 + 513 * (dp.SLOT_US + 50 - dp.SLEEP_OVERHEAD_US) / 1e6
     assert sender.period == pytest.approx(took * FRAME_MARGIN, rel=1e-3)
+
+
+def frames_take(sender: FrameSender, ops: FakeOps, seconds_by_frame: list[float]) -> None:
+    """
+    Make every frame take the given time on the line instead of going through the fake port.
+    """
+
+    def send(_frame: bytes) -> None:
+        ops.now += seconds_by_frame[min(sender.frames, len(seconds_by_frame) - 1)]
+
+    sender.port.send_frame = send  # type: ignore[method-assign]
+
+
+def test_frames_that_miss_the_grid_are_counted() -> None:
+    ops = FakeOps()
+    sender = sender_on(ops, Universe(slots=512))
+    frames_take(sender, ops, [0.060])
+    sender.run(max_frames=WARMUP_FRAMES + 5)
+
+    assert sender.late_frames == 5, "every frame after the warm-up"
+    assert sender.max_late_us >= 35000
+
+
+def test_with_a_pause_between_slots_no_frame_is_late() -> None:
+    ops = FakeOps()
+    sender = sender_on(ops, Universe(slots=512), slot_gap_us=50)
+    frames_take(sender, ops, [0.060] * (WARMUP_FRAMES + 2) + [0.200])
+    sender.run(max_frames=WARMUP_FRAMES + 6)
+
+    assert sender.late_frames == 0 and sender.max_late_us == 0, "there is no grid to be late against"
+    assert sender.period == pytest.approx(0.200 * FRAME_MARGIN)

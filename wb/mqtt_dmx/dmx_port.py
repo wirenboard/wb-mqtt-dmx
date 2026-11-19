@@ -40,9 +40,10 @@ MIN_BREAK_US = 88
 MIN_MAB_US = 8
 SLOT_US = 44  # one slot on the wire: start bit, 8 data bits, 2 stop bits at 4 µs each
 MAX_SLOT_GAP_US = 1000
-# What a one-byte write() and the wake-up from a sleep take at the very least under SCHED_FIFO on the
-# controller (5 + 10 µs). Taking off only the minimum keeps the pause on the wire at what was asked or more
-# (scope: asked 50 µs, median 53, 1 % under 46, a fifth around 110, 72 on average = SLEEP_JITTER_US extra).
+# What a one-byte write() and the wake-up from a sleep take at the very least on the controller (5 + 10 µs).
+# Taking off only the minimum keeps the pause on the wire at what was asked or more. The unit file sets
+# TimerSlackNSec=1: the default 50 µs timer slack would add to every sleep. On average a sleep still runs
+# SLEEP_JITTER_US longer than asked; the frame time estimate counts that in.
 SLEEP_OVERHEAD_US = 15
 SLEEP_JITTER_US = 20
 DRAIN_TIMEOUT_S = 0.1  # a 512-slot frame is 22.6 ms on the wire

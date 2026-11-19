@@ -6,6 +6,9 @@ After=NetworkManager.service mosquitto.service
 Type=simple
 User=root
 ExecStart=/usr/bin/wb-mqtt-dmx
+# A sleep may run long by the timer slack, 50 us by default. That is a whole channel when a port
+# pauses between channels, so the slack is taken away.
+TimerSlackNSec=1
 Restart=on-failure
 RestartSec=10
 # 6 = configuration error: fixed through the web form, which restarts the unit itself.
