@@ -1,10 +1,10 @@
 """
-Stand-ins for what the service touches outside the process: the serial port and the MQTT broker.
+Stand-ins for what the service touches outside the process: the serial port.
 """
 
 import struct
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from wb.mqtt_dmx import dmx_port as dp
 from wb.mqtt_dmx.config import load_config
@@ -90,32 +90,6 @@ def fake_port(ops: FakeOps, path: str = PORT_PATH, **settings: int) -> dp.DmxPor
     return port
 
 
-class FakeClient:
-    """
-    An MQTT client that keeps what was published, by topic.
-    """
-
-    def __init__(self, _client_id: str) -> None:
-        self.topics: dict[str, str] = {}
-        self.on_connect: Callable[..., None] = lambda *_args: None
-        self.on_message: Any = None
-
-    def will_set(self, *_args: Any, **_kwargs: Any) -> None:
-        pass
-
-    def subscribe(self, *_args: Any, **_kwargs: Any) -> None:
-        pass
-
-    def publish(self, topic: str, payload: str, **_kwargs: Any) -> None:
-        self.topics[topic] = payload
-
-    def start(self) -> None:
-        self.on_connect(self, None, None, 0)
-
-    def stop(self) -> None:
-        pass
-
-
 def port_entry(devices: list[dict[str, Any]], path: str = PORT_PATH, **settings: Any) -> dict[str, Any]:
     """
     One port of a configuration file. Extra keyword arguments override the port settings;
@@ -127,31 +101,27 @@ def port_entry(devices: list[dict[str, Any]], path: str = PORT_PATH, **settings:
     return {"enabled": enabled, "settings": base, "devices": devices}
 
 
-def make_service(
-    devices: list[dict[str, Any]], tmp_path: Path, **settings: Any
-) -> tuple[DmxService, dict[str, str]]:
+def make_service(devices: list[dict[str, Any]], tmp_path: Path, **settings: Any) -> DmxService:
     """
-    A service with one port, connected to a fake broker.
+    A service with one port that talks to a fake serial device.
 
     Args:
         devices: The devices of the port.
         tmp_path: Where the service keeps its state file.
-        **settings: Port settings that differ from the defaults, see port_entry.
-
-    Returns:
-        The service and the topics it has published.
+        **settings: Port settings that differ from the defaults, see port_entry. `fail_open` makes
+            the serial port fail to open.
     """
-    clients: list[FakeClient] = []
-
-    def factory(client_id: str) -> FakeClient:
-        clients.append(FakeClient(client_id))
-        return clients[-1]
-
+    fail_open = settings.pop("fail_open", False)
     config = {"ports": [port_entry(devices, **settings)]}
-    service = DmxService(
+    return DmxService(
         load_config(config),
-        client_factory=factory,
         state_path=tmp_path / "state.json",
+        make_port=lambda port: fake_port(FakeOps(fail_open=fail_open), port.path),
     )
-    clients[0].start()  # publishes everything, as a real connect would
-    return service, clients[0].topics
+
+
+def shown(service: DmxService, device: str, control: str) -> Any:
+    """
+    What a control of the service shows now.
+    """
+    return service.shown_values()[device][control]

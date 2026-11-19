@@ -1,7 +1,7 @@
 import pytest
 
 from wb.mqtt_dmx import templates
-from wb.mqtt_dmx.controls import build_controls, render
+from wb.mqtt_dmx.controls import ControlSpec, build_controls, render
 
 
 def test_layout_gives_one_channel_per_letter() -> None:
@@ -68,15 +68,10 @@ def test_channels_type_gives_plain_numbered_channels() -> None:
 def test_control_is_a_slider_over_the_channel_range() -> None:
     dimmer, white = build_controls(templates.layout_template("dw", 16))
 
-    assert dimmer.meta(1) == {
-        "type": "range",
-        "order": 1,
-        "readonly": False,
-        "min": 0,
-        "max": 65535,
-        "title": {"en": "Dimmer", "ru": "Диммер"},
-    }
-    assert white.meta(2)["order"] == 2
+    assert dimmer.spec() == ControlSpec(
+        "dimmer", "range", {"en": "Dimmer", "ru": "Диммер"}, readonly=False, maximum=65535
+    )
+    assert white.spec().id == "white"
 
 
 @pytest.mark.parametrize(

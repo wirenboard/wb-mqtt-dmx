@@ -12,7 +12,7 @@ def reported_fixture(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     Catches the configuration errors the service would publish over MQTT.
     """
     errors: list[str] = []
-    monkeypatch.setattr(main, "publish_config_error", errors.append)
+    monkeypatch.setattr(main, "report_config_error", errors.append)
     return errors
 
 

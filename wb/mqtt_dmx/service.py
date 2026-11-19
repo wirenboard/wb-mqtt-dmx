@@ -1,39 +1,35 @@
 """
-The wb-mqtt-dmx daemon: MQTT devices on the controller, DMX frames on the enabled ports.
+The core of wb-mqtt-dmx: the enabled ports with their frame threads, and what every device shows.
 
-Devices (WB conventions, all under /devices/):
+Nothing here talks to the broker. mqtt.py publishes the devices that device_specs() lists with the
+values of shown_values() and passes every write to handle_write(). The devices are:
 
 * `wb-mqtt-dmx` — the service: `status` (enum), per port a state enum, frame rate, late frame count,
   the error text when there is one and the address map, plus a Blackout button;
 * `dmx_<id>` — one device per configured device with one range control per template channel;
 * `dmx_<id>` for a Count > 1 entry — the group: the same controls, written to every member.
 
-Values are numbers and enums with translated titles, so the web UI shows them in its own language.
 A value written to a control goes straight into the port's frame buffer; the frame thread streams
-the buffer at the port's rate. Channel values are saved to STATE_PATH (at most once a second) and
+the buffer at the port's rate. Channel values are saved to STATE_PATH once the light stands still and
 restored on start when the port says so.
 
 A port can also take its universe from the network (Art-Net / sACN, see netin.py): while a console
-sends, its frames are output, the controls follow them a few times a second and the port's `source`
-control names the console; when it stops, the MQTT values are back.
+sends, its frames are output, the controls show them and the port's `source` control names the
+console; when it stops, the values written over MQTT are back.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import signal
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import FrameType
 from typing import Any, Callable, Optional, Union
 
-from wb_common.mqtt_client import MQTTClient
-
 from .config import Device, Group, Port, address_map
-from .controls import Control, build_controls, render
+from .controls import Control, ControlSpec, DeviceSpec, build_controls, render
 from .dmx_port import DmxPort, DmxPortError
 from .netin import Binding, NetReceiver
 from .sender import FrameSender, Universe
@@ -47,37 +43,26 @@ STATUS_ENUM = {
     "0": {"en": "OK", "ru": "Работает"},
     "1": {"en": "Error", "ru": "Ошибка"},
     "2": {"en": "No port enabled", "ru": "Нет включённых портов"},
+    "3": {"en": "Configuration error", "ru": "Ошибка в настройках"},
 }
-STATUS_META = {
-    "type": "value",
-    "readonly": True,
-    "order": 1,
-    "title": {"en": "Status", "ru": "Состояние"},
-    "enum": STATUS_ENUM,
-}
-STATUS_OK, STATUS_ERROR, STATUS_NO_PORTS = "0", "1", "2"
+STATUS_TITLE = {"en": "Status", "ru": "Состояние"}
+STATUS_OK, STATUS_ERROR, STATUS_NO_PORTS, STATUS_CONFIG_ERROR = 0, 1, 2, 3
 PORT_STATE_ENUM = {
     "0": {"en": "Disabled", "ru": "Выключен"},
     "1": {"en": "Starting", "ru": "Запускается"},
     "2": {"en": "Running", "ru": "Работает"},
     "3": {"en": "Error", "ru": "Ошибка"},
 }
-PORT_DISABLED, PORT_STARTING, PORT_RUNNING, PORT_ERROR = "0", "1", "2", "3"
+PORT_DISABLED, PORT_STARTING, PORT_RUNNING, PORT_ERROR = 0, 1, 2, 3
 WB_MQTT_SERIAL_CONF = Path("/etc/wb-mqtt-serial.conf")
 STATE_PATH = Path("/var/lib/wb-mqtt-dmx/state.json")
 # The values of a port that restores them on start go to the root filesystem (eMMC). They are written
 # only once the light has stood still for this long, and only when they differ from what is in the file.
 # A running scene therefore writes nothing: whoever draws it will draw it again after a restart.
 STATE_SETTLE_S = 10.0
-STATS_INTERVAL_S = 5.0
-NET_PUBLISH_INTERVAL_S = 0.25  # how often control values follow a network source (40 fps would flood MQTT)
 NET_SOURCE_MQTT = "MQTT"
 BLACKOUT_FRAMES = 3  # zero frames sent before closing a port with on_stop = blackout
-EXIT_SUCCESS = 0
-EXIT_FAILURE = 1
-CONFIG_ERROR_PUBLISH_TIMEOUT_S = 2.0
 
-ClientFactory = Callable[[str], Any]
 Target = Union[Device, Group]
 
 
@@ -113,32 +98,11 @@ class CheckedPort(DmxPort):
         super().open()
 
 
-def _default_client_factory(client_id: str) -> Any:
-    return MQTTClient(client_id)
-
-
-def publish_config_error(text: str, client_factory: ClientFactory = _default_client_factory) -> None:
+def checked_port(port: Port) -> DmxPort:
     """
-    Leave the error on the service device so a bad config saved in the web UI is visible there.
+    The serial port of a configured port, with the wb-mqtt-serial guard.
     """
-    client = client_factory(f"{DRIVER}-config")
-    try:
-        client.start()
-        dev = f"/devices/{SERVICE_DEVICE}"
-        client.publish(
-            f"{dev}/meta",
-            json.dumps({"driver": DRIVER, "title": SERVICE_TITLE}, ensure_ascii=False),
-            retain=True,
-        )
-        client.publish(
-            f"{dev}/controls/status/meta", json.dumps(STATUS_META, ensure_ascii=False), retain=True
-        )
-        client.publish(f"{dev}/controls/status", f"config error: {text}", retain=True)
-        info = client.publish(f"{dev}/meta/error", "r", retain=True)
-        info.wait_for_publish(timeout=CONFIG_ERROR_PUBLISH_TIMEOUT_S)
-        client.stop()
-    except (ConnectionError, OSError) as e:
-        LOG.warning("cannot report the config error over MQTT: %s", e)
+    return CheckedPort(port.path, break_us=port.break_us, mab_us=port.mab_us, slot_gap_us=port.slot_gap_us)
 
 
 @dataclass
@@ -152,44 +116,41 @@ class PortRuntime:
     values: dict[str, dict[str, Any]] = field(default_factory=dict)  # device_id -> control id -> MQTT value
     controls: dict[str, list[Control]] = field(default_factory=dict)  # device_id -> controls
     net_source: str = ""  # who owns the universe over the network, "" = nobody
-    # values published while a network source is in charge
-    shown: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def universe(self) -> Universe:
         return self.sender.universe
 
 
-# The service owns everything that runs: the ports with their senders, the MQTT client, the network
-# receiver and the events and lock that tie their threads together.
+# The service owns everything that runs: the ports with their senders, the network receiver and the
+# events and lock that tie their threads together.
 class DmxService:  # pylint: disable=too-many-instance-attributes
     """
-    Publishes the devices of the enabled ports over MQTT and keeps their frames going.
+    Keeps the frames of the enabled ports going and knows what every device shows.
     """
 
     def __init__(
         self,
         ports: list[Port],
-        client_factory: ClientFactory = _default_client_factory,
         state_path: Path = STATE_PATH,
+        make_port: Callable[[Port], DmxPort] = checked_port,
     ) -> None:
         self._ports = ports
         self._state_path = state_path
         self._runtimes: dict[str, PortRuntime] = {}  # port path -> runtime
         self._by_device: dict[str, tuple[PortRuntime, Target]] = {}
         self._lock = threading.RLock()
-        self._stop = threading.Event()
         self._state_dirty = threading.Event()
         self._last_change = 0.0  # when a value last really changed, by self.clock
         self._saved_text = ""  # what the state file holds
         self.clock: Callable[[], float] = time.monotonic  # tests replace it
-        self._error_text = ""
+        # Called when what the devices show has changed without a write: a port started or failed, a
+        # console took a port or let it go. It comes from the frame and network threads.
+        self.on_change: Callable[[], None] = lambda: None
+        self._started = False
         for port in (p for p in ports if p.enabled):
             universe = Universe(port.slots)
-            dmx = CheckedPort(
-                port.path, break_us=port.break_us, mab_us=port.mab_us, slot_gap_us=port.slot_gap_us
-            )
-            sender = FrameSender(universe, dmx, port.refresh_hz)
+            sender = FrameSender(universe, make_port(port), port.refresh_hz)
             sender.on_state = self._on_sender_state
             rt = PortRuntime(port, sender)
             self._runtimes[port.path] = rt
@@ -197,6 +158,11 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
                 self._by_device[target.device_id] = (rt, target)
                 rt.controls[target.device_id] = build_controls(target.template)
                 rt.values[target.device_id] = {c.id: c.default for c in rt.controls[target.device_id]}
+        # These texts never change while the service runs, and shown_values() is read on every write
+        self._address_texts = {
+            device_id: self._address_text(target) for device_id, (_rt, target) in self._by_device.items()
+        }
+        self._port_maps = {port.path: address_map(port) or "-" for port in ports}
         self._restore_state()
         bindings = [
             Binding(rt.port.path, rt.port.artnet_universe, rt.port.sacn_universe)
@@ -204,10 +170,6 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
             if rt.port.artnet_universe is not None or rt.port.sacn_universe is not None
         ]
         self.net = NetReceiver(bindings, self._on_net_frame, self._on_net_source) if bindings else None
-        self._client = client_factory(DRIVER)
-        self._client.on_connect = self._on_connect
-        self._client.on_message = self._on_message
-        self._client.will_set(f"/devices/{SERVICE_DEVICE}/meta/error", "p", retain=True)
 
     def frame(self, path: str) -> bytes:
         """
@@ -217,13 +179,6 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
             path: Path of an enabled port.
         """
         return self._runtimes[path].universe.snapshot()
-
-    def install_signal_handlers(self) -> None:
-        """
-        Stop the service on SIGINT and SIGTERM. Call from the main thread before run().
-        """
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
 
     # ---- state on disk -----------------------------------------------------------------------
 
@@ -297,22 +252,11 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
         self._last_change = self.clock()
         self._state_dirty.set()
 
-    def _state_saver_loop(self) -> None:
-        last_stats = time.monotonic()
-        while not self._stop.wait(1.0):
-            self.save_state_when_settled()
-            # On its own clock: a rule writing every few seconds must not starve the stats
-            if time.monotonic() - last_stats >= STATS_INTERVAL_S:
-                last_stats = time.monotonic()
-                with self._lock:
-                    self._publish_port_stats()
-
     # ---- values <-> universe -----------------------------------------------------------------
 
     def _values_from_universe(self, rt: PortRuntime, target: Target) -> dict[str, Any]:
         """
-        Device values read back from the buffer (restore, network source); a group shows its first
-        member.
+        Device values read back from the buffer (restore, network source); a group shows its first member.
         """
         dev = target.members[0] if isinstance(target, Group) else target
         read = {off: rt.universe.get(dev.address + off) for off in range(target.template.footprint)}
@@ -346,42 +290,11 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
             if not source:
                 for device in rt.port.devices:
                     self._render(rt, device)
-                for device_id, values in rt.values.items():
-                    for cid, value in values.items():
-                        self._pub(f"/devices/{device_id}/controls/{cid}", str(value))
-                rt.shown = {}
-            self._publish_port_stats()
+        self.on_change()
 
-    def publish_net_values(self) -> None:
-        """
-        Let the controls follow a network source, a few times a second and only what changed.
-        """
-        with self._lock:
-            for rt in self._runtimes.values():
-                if not rt.net_source:
-                    continue
-                for target in [*rt.port.groups, *rt.port.devices]:
-                    new = self._values_from_universe(rt, target)
-                    old = rt.shown.get(target.device_id, rt.values[target.device_id])
-                    for cid, value in new.items():
-                        if old.get(cid) != value:
-                            self._pub(f"/devices/{target.device_id}/controls/{cid}", str(value))
-                    rt.shown[target.device_id] = new
+    # ---- what the devices show ---------------------------------------------------------------
 
-    def _net_publish_loop(self) -> None:
-        while not self._stop.wait(NET_PUBLISH_INTERVAL_S):
-            self.publish_net_values()
-
-    # ---- MQTT publishing ---------------------------------------------------------------------
-
-    def _pub(self, topic: str, payload: Any, retain: bool = True) -> None:
-        self._client.publish(
-            topic,
-            payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False),
-            retain=retain,
-        )
-
-    def _port_state(self, port: Port) -> tuple[str, str]:
+    def _port_state(self, port: Port) -> tuple[int, str]:
         """
         (state enum value, error text) of a port.
         """
@@ -392,51 +305,29 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
             return PORT_ERROR, rt.sender.error
         return (PORT_RUNNING if rt.sender.running else PORT_STARTING), ""
 
-    def _port_controls(self, port: Port) -> dict[str, dict[str, Any]]:
+    @staticmethod
+    def _port_controls(port: Port) -> list[ControlSpec]:
         """
-        Control id -> meta of the service device's per-port block.
+        The service device's block of one port.
         """
         k, name = port.key, port.name
-        return {
-            f"{k}_state": {
-                "type": "value",
-                "readonly": True,
-                "enum": PORT_STATE_ENUM,
-                "title": {"en": f"{name}: state", "ru": f"{name}: состояние"},
-            },
-            f"{k}_fps": {
-                "type": "value",
-                "readonly": True,
-                "units": "fps",
-                "title": {"en": f"{name}: frame rate", "ru": f"{name}: кадров в секунду"},
-            },
-            f"{k}_late": {
-                "type": "value",
-                "readonly": True,
-                "title": {"en": f"{name}: late frames", "ru": f"{name}: опоздавших кадров"},
-            },
-            f"{k}_error": {
-                "type": "text",
-                "readonly": True,
-                "title": {"en": f"{name}: error", "ru": f"{name}: ошибка"},
-            },
-            f"{k}_map": {
-                "type": "text",
-                "readonly": True,
-                "title": {"en": f"{name}: DMX addresses", "ru": f"{name}: адреса DMX"},
-            },
-            f"{k}_source": {
-                "type": "text",
-                "readonly": True,
-                "title": {"en": f"{name}: source", "ru": f"{name}: источник"},
-            },
-        }
 
-    def _port_values(self, port: Port) -> dict[str, str]:
+        def titled(en: str, ru: str) -> dict[str, str]:
+            return {"en": f"{name}: {en}", "ru": f"{name}: {ru}"}
+
+        return [
+            ControlSpec(f"{k}_state", "value", titled("state", "состояние"), enum=PORT_STATE_ENUM),
+            ControlSpec(f"{k}_fps", "value", titled("frame rate", "кадров в секунду"), units="fps"),
+            ControlSpec(f"{k}_late", "value", titled("late frames", "опоздавших кадров")),
+            ControlSpec(f"{k}_error", "text", titled("error", "ошибка")),
+            ControlSpec(f"{k}_map", "text", titled("DMX addresses", "адреса DMX")),
+            ControlSpec(f"{k}_source", "text", titled("source", "источник")),
+        ]
+
+    def _port_values(self, port: Port) -> dict[str, Any]:
         state, error = self._port_state(port)
         rt = self._runtimes.get(port.path)
         fps = rt.sender.measured_fps if rt is not None and rt.sender.running else 0.0
-        late = rt.sender.late_frames if rt is not None else 0
         source = ""
         if self.net is not None:
             source = self.net.error or (
@@ -444,129 +335,85 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
             )
         return {
             f"{port.key}_state": state,
-            f"{port.key}_fps": f"{fps:.1f}",
-            f"{port.key}_late": str(late),
-            f"{port.key}_error": error,
-            f"{port.key}_map": address_map(port) or "-",
+            f"{port.key}_fps": round(fps, 1),
+            f"{port.key}_late": rt.sender.late_frames if rt is not None else 0,
+            f"{port.key}_error": error or None,  # a text control has either a text or no value
+            f"{port.key}_map": self._port_maps[port.path],
             f"{port.key}_source": source or NET_SOURCE_MQTT,
         }
 
-    def _publish_service_device(self) -> None:
-        dev = f"/devices/{SERVICE_DEVICE}"
-        self._pub(f"{dev}/meta", {"driver": DRIVER, "title": SERVICE_TITLE})
-        self._pub(f"{dev}/controls/status/meta", STATUS_META)
-        order = 2
-        for port in self._ports:
-            for cid, meta in self._port_controls(port).items():
-                self._pub(f"{dev}/controls/{cid}/meta", {**meta, "order": order})
-                order += 1
-            for cid, value in self._port_values(port).items():
-                self._pub(f"{dev}/controls/{cid}", value)
-        self._pub(
-            f"{dev}/controls/blackout/meta",
-            {"type": "pushbutton", "order": order, "title": {"en": "Blackout", "ru": "Погасить всё"}},
-        )
-        self._publish_status()
+    def _status(self) -> int:
+        enabled = list(self._runtimes.values())
+        if any(rt.sender.error for rt in enabled):
+            return STATUS_ERROR
+        return STATUS_OK if enabled else STATUS_NO_PORTS
 
-    def _service_controls(self) -> list[str]:
-        out = ["status"]
-        for port in self._ports:
-            out += list(self._port_controls(port))
-        return out + ["blackout"]
-
-    def _publish_status(self) -> None:
-        enabled = [p for p in self._ports if p.path in self._runtimes]
-        failed = [p for p in enabled if self._runtimes[p.path].sender.error]
-        if failed:
-            status, err = STATUS_ERROR, "w"
-        elif not enabled:
-            status, err = STATUS_NO_PORTS, "w"
-        else:
-            status, err = STATUS_OK, ""
-        self._error_text = err
-        self._pub(f"/devices/{SERVICE_DEVICE}/controls/status", status)
-        self._pub(f"/devices/{SERVICE_DEVICE}/meta/error", err)
-        for device_id, (rt, _target) in self._by_device.items():
-            self._pub(f"/devices/{device_id}/meta/error", "w" if rt.sender.error else "")
-
-    def _publish_port_stats(self) -> None:
-        for port in self._ports:
-            for cid, value in self._port_values(port).items():
-                self._pub(f"/devices/{SERVICE_DEVICE}/controls/{cid}", value)
-
-    def _on_sender_state(self, _sender: FrameSender) -> None:
-        with self._lock:
-            self._publish_port_stats()
-            self._publish_status()
-
-    def _publish_target(self, rt: PortRuntime, target: Target) -> None:
-        dev = f"/devices/{target.device_id}"
+    @staticmethod
+    def _address_text(target: Target) -> str:
         span = (
             f"{target.address}–{target.last_address}"
             if target.last_address > target.address
             else f"{target.address}"
         )
         if isinstance(target, Group):
-            title = {"en": f"{target.name} (all)", "ru": f"{target.name} (все)"}
-            info = f"{len(target.members)} × {target.template.footprint} · DMX {span}"
-        else:
-            title = {"en": target.name, "ru": target.name}
-            info = f"DMX {span}"
-        self._pub(f"{dev}/meta", {"driver": DRIVER, "title": title})
-        self._pub(f"{dev}/meta/error", "w" if rt.sender.error else "")
-        controls = rt.controls[target.device_id]
-        for n, c in enumerate(controls, start=1):
-            self._pub(f"{dev}/controls/{c.id}/meta", c.meta(n))
-            self._pub(f"{dev}/controls/{c.id}", str(rt.values[target.device_id][c.id]))
-        n = len(controls) + 1
-        # The template title is the control's title, so the web UI shows it in its own language.
-        self._pub(
-            f"{dev}/controls/dmx/meta",
-            {"type": "text", "readonly": True, "order": n, "title": target.template.title},
+            return f"{len(target.members)} × {target.template.footprint} · DMX {span}"
+        return f"DMX {span}"
+
+    def device_specs(self) -> list[DeviceSpec]:
+        """
+        Every device the service shows, the service's own first.
+        """
+        controls = [ControlSpec("status", "value", STATUS_TITLE, enum=STATUS_ENUM)]
+        for port in self._ports:
+            controls += self._port_controls(port)
+        controls.append(
+            ControlSpec("blackout", "pushbutton", {"en": "Blackout", "ru": "Погасить всё"}, readonly=False)
         )
-        self._pub(f"{dev}/controls/dmx", info)
+        specs = [DeviceSpec(SERVICE_DEVICE, SERVICE_TITLE, controls)]
+        for device_id, (rt, target) in self._by_device.items():
+            tails = {"en": " (all)", "ru": " (все)"} if isinstance(target, Group) else {"en": "", "ru": ""}
+            # The template title is the control's title, so the web UI shows it in its own language.
+            address = ControlSpec("dmx", "text", target.template.title)
+            specs.append(
+                DeviceSpec(
+                    device_id,
+                    {lang: target.name + tail for lang, tail in tails.items()},
+                    [c.spec() for c in rt.controls[device_id]] + [address],
+                )
+            )
+        return specs
 
-    def _unpublish_all(self) -> None:
+    def shown_values(self) -> dict[str, dict[str, Any]]:
         """
-        Clear retained topics so stopped devices do not linger in the web UI.
+        What every control shows right now: device id -> control id -> value; None is a control without
+        a value. While a console owns a port, its devices show the console's frame.
         """
-        for device_id, (rt, _target) in self._by_device.items():
-            dev = f"/devices/{device_id}"
-            for cid in [c.id for c in rt.controls[device_id]] + ["dmx"]:
-                self._pub(f"{dev}/controls/{cid}/meta", "")
-                self._pub(f"{dev}/controls/{cid}", "")
-            self._pub(f"{dev}/meta/error", "")
-            self._pub(f"{dev}/meta", "")
-        dev = f"/devices/{SERVICE_DEVICE}"
-        for cid in self._service_controls():
-            self._pub(f"{dev}/controls/{cid}/meta", "")
-            self._pub(f"{dev}/controls/{cid}", "")
-        self._pub(f"{dev}/meta/error", "")
-        self._pub(f"{dev}/meta", "")
-
-    # ---- MQTT callbacks ----------------------------------------------------------------------
-
-    def _on_connect(self, _client: Any, _userdata: Any, _flags: Any, rc: int) -> None:
-        if rc != 0:
-            LOG.error("MQTT connect failed, rc=%s", rc)
-            return
-        LOG.info("MQTT connected")
         with self._lock:
-            self._publish_service_device()
-            for rt, target in self._by_device.values():
-                self._publish_target(rt, target)
-        # A wildcard spans a whole level, so every device is subscribed and the handler keeps our ids.
-        self._client.subscribe("/devices/+/controls/+/on")
+            service: dict[str, Any] = {"status": self._status()}
+            for port in self._ports:
+                service.update(self._port_values(port))
+            shown = {SERVICE_DEVICE: service}
+            for device_id, (rt, target) in self._by_device.items():
+                values = self._values_from_universe(rt, target) if rt.net_source else rt.values[device_id]
+                shown[device_id] = {**values, "dmx": self._address_texts[device_id]}
+            return shown
 
-    def _on_message(self, _client: Any, _userdata: Any, msg: Any) -> None:
-        parts = msg.topic.split("/")  # ['', 'devices', <dev>, 'controls', <ctrl>, 'on']
-        if len(parts) != 6:
-            return
-        self.handle_write(parts[2], parts[4], msg.payload.decode("utf-8", "replace"))
+    def failed_devices(self) -> set[str]:
+        """
+        The devices to mark with an error: those of a port that does not work, and the service itself
+        when it is not all right.
+        """
+        with self._lock:
+            failed = {device_id for device_id, (rt, _target) in self._by_device.items() if rt.sender.error}
+            if self._status() != STATUS_OK:
+                failed.add(SERVICE_DEVICE)
+            return failed
+
+    # ---- writes ------------------------------------------------------------------------------
 
     def handle_write(self, device_id: str, control_id: str, payload: str) -> bool:
         """
-        Apply a value written to /devices/<device_id>/controls/<control_id>/on. True when accepted.
+        Apply a value written to a control. True when accepted.
         """
         with self._lock:
             if device_id == SERVICE_DEVICE:
@@ -588,11 +435,8 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
             # A rule that keeps sending the same value changes nothing and must not hold the save back
             changed = any(rt.values[d.device_id][control_id] != value for d in [target, *members])
             rt.values[device_id][control_id] = value
-            self._pub(f"/devices/{device_id}/controls/{control_id}", str(value))
             for member in members:
-                if isinstance(target, Group):
-                    rt.values[member.device_id][control_id] = value
-                    self._pub(f"/devices/{member.device_id}/controls/{control_id}", str(value))
+                rt.values[member.device_id][control_id] = value
                 if not rt.net_source:  # a console owns the line: the value waits until it lets go
                     self._render(rt, member)
             if changed:
@@ -606,16 +450,17 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
                 for device_id, values in rt.values.items():
                     for control in rt.controls[device_id]:
                         values[control.id] = control.zero
-                        self._pub(f"/devices/{device_id}/controls/{control.id}", str(control.zero))
             self._values_changed()
 
-    def _signal_handler(self, _signum: int, _frame: Optional[FrameType]) -> None:
-        LOG.info("stop requested")
-        self._stop.set()
+    def _on_sender_state(self, _sender: FrameSender) -> None:
+        self.on_change()
 
     # ---- lifecycle ---------------------------------------------------------------------------
 
-    def run(self) -> int:
+    def start(self) -> None:
+        """
+        Start the frame threads and the network receiver.
+        """
         enabled = list(self._runtimes.values())
         LOG.info(
             "starting: %d port(s) enabled of %d, %d device(s)",
@@ -623,32 +468,28 @@ class DmxService:  # pylint: disable=too-many-instance-attributes
             len(self._ports),
             len(self._by_device),
         )
-        for rt in enabled:
-            LOG.info("%s: %s", rt.port.path, address_map(rt.port) or "no devices")
-        try:
-            self._client.start()  # synchronous: an unreachable broker makes systemd retry
-        except (ConnectionError, OSError) as e:
-            LOG.error("MQTT broker unavailable: %s", e)
-            return EXIT_FAILURE
+        self._started = True
         for i, rt in enumerate(enabled):
+            LOG.info("%s: %s", rt.port.path, address_map(rt.port) or "no devices")
             rt.sender.start()
             if i + 1 < len(enabled):
                 time.sleep(rt.sender.period / len(enabled))  # stagger the grids, see docs/hardware_results.md
-        saver = threading.Thread(target=self._state_saver_loop, name="dmx-state", daemon=True)
-        saver.start()
         if self.net is not None:
             self.net.start()
-            threading.Thread(target=self._net_publish_loop, name="dmx-net-publish", daemon=True).start()
-        self._stop.wait()
+
+    def stop(self) -> None:
+        """
+        Save the values and stop what start() has started; a port set to go dark sends zero frames first.
+        """
+        if not self._started:
+            return
+        self._started = False
         if self.net is not None:
             self.net.stop()
         self.save_state()  # before a blackout, so a restore brings the light back
-        for rt in enabled:
+        for rt in self._runtimes.values():
             if rt.port.on_stop == "blackout" and rt.sender.running:
                 rt.universe.blackout()
                 time.sleep(rt.sender.period * BLACKOUT_FRAMES)
             rt.sender.stop()
-        self._unpublish_all()
-        self._client.stop()
         LOG.info("stopped")
-        return EXIT_SUCCESS

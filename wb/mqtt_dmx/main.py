@@ -23,8 +23,9 @@ from typing import Any, Optional
 
 from .config import ConfigError, load_config
 from .dmx_port import DmxPort
+from .mqtt import report_config_error, run_service
 from .sender import FrameSender, Universe
-from .service import STATE_PATH, DmxService, publish_config_error
+from .service import STATE_PATH, DmxService
 from .version import get_version
 
 CONFIG_PATH = "/etc/wb-mqtt-dmx.conf"
@@ -107,10 +108,10 @@ def cmd_test_port(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS
 
 
-def run_service(args: argparse.Namespace) -> int:
+def cmd_run(args: argparse.Namespace) -> int:
     def config_error(text: str) -> int:
         print(f"configuration: {text}", file=sys.stderr)
-        publish_config_error(text)
+        report_config_error(text)
         return EXIT_CONFIG_ERROR
 
     try:
@@ -123,9 +124,7 @@ def run_service(args: argparse.Namespace) -> int:
         ports = load_config(config)
     except (ConfigError, TypeError, AttributeError) as e:
         return config_error(str(e))
-    service = DmxService(ports, state_path=Path(args.state) if args.state else STATE_PATH)
-    service.install_signal_handlers()
-    return service.run()
+    return run_service(DmxService(ports, state_path=Path(args.state) if args.state else STATE_PATH))
 
 
 def main(argv: list[str]) -> int:
@@ -153,7 +152,7 @@ def main(argv: list[str]) -> int:
     )
     if args.command == "test-port":
         return cmd_test_port(args)
-    return run_service(args)
+    return cmd_run(args)
 
 
 if __name__ == "__main__":

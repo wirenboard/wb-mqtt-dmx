@@ -6,30 +6,52 @@ MQTT controls of a device: one `range` control per template channel (0..255, or 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from .templates import Channel, Template
+
+Title = dict[str, str]  # {"en": ..., "ru": ...}
+
+
+@dataclass
+class ControlSpec:  # pylint: disable=too-many-instance-attributes
+    """
+    A control as the web UI shows it: what mqtt.py needs to publish it. The type is a control type of
+    the Wiren Board convention; a range starts at 0.
+    """
+
+    id: str
+    type: str
+    title: Title
+    readonly: bool = True
+    maximum: Optional[int] = None
+    units: Optional[str] = None
+    enum: Optional[dict[str, Title]] = None
+
+
+@dataclass
+class DeviceSpec:
+    """
+    A device as the web UI shows it, its controls in the order of the card.
+    """
+
+    id: str
+    title: Title
+    controls: list[ControlSpec]
 
 
 @dataclass
 class Control:
     id: str
-    title: dict[str, str]
+    title: Title
     channel: Channel
 
     @property
     def max(self) -> int:
         return self.channel.max_value
 
-    def meta(self, order: int) -> dict[str, Any]:
-        return {
-            "type": "range",
-            "order": order,
-            "readonly": False,
-            "min": 0,
-            "max": self.max,
-            "title": self.title,
-        }
+    def spec(self) -> ControlSpec:
+        return ControlSpec(self.id, "range", self.title, readonly=False, maximum=self.max)
 
     @property
     def default(self) -> int:

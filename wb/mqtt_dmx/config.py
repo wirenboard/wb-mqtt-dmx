@@ -10,6 +10,7 @@ Disabled ports are kept (their devices are not published) so the status can list
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any
 
 from .dmx_port import MAX_SLOT_GAP_US
@@ -95,7 +96,7 @@ class Port:  # pylint: disable=too-many-instance-attributes
     devices: list[Device] = field(default_factory=list)
     groups: list[Group] = field(default_factory=list)
 
-    @property
+    @cached_property
     def key(self) -> str:
         """
         rs485_2 for /dev/ttyRS485-2, mod1 for /dev/ttyMOD1: the port's control id prefix.
