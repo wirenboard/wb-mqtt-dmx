@@ -1,0 +1,447 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "title": "DMX512 output",
+  "description": "DMX512 fixtures driven from the controller's own RS-485 ports or WBE2 RS-485 modules. Each port is one DMX line with its devices. A port must be disabled in the serial device driver settings first (Settings → Configuration files → Serial device driver), the same way as for wb-mqtt-mbgate.",
+  "configFile": {
+    "path": "/etc/wb-mqtt-dmx.conf",
+    "service": "wb-mqtt-dmx"
+  },
+  "options": {
+    "disable_edit_json": true,
+    "disable_properties": true,
+    "disable_collapse": true
+  },
+  "properties": {
+    "ports": {
+      "type": "array",
+      "title": "Ports",
+      "propertyOrder": 1,
+      "minItems": 1,
+      "_format": "tabs-top",
+      "items": {
+        "type": "object",
+        "title": "Port",
+        "headerTemplate": "{{self.settings.name}} ({{self.settings.path}})",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false,
+            "_format": "checkbox",
+            "propertyOrder": 0,
+            "description": "Send DMX on this port. Keep it off until the port is disabled in the serial device driver settings, otherwise both drivers write to the same line. Default: off."
+          },
+          "settings": {
+            "type": "object",
+            "title": "Port settings",
+            "propertyOrder": 1,
+            "_format": "grid",
+            "options": {
+              "collapsed": true,
+              "disable_edit_json": true,
+              "disable_properties": true
+            },
+            "properties": {
+              "path": {
+                "type": "string",
+                "title": "Serial port",
+                "minLength": 1,
+                "default": "/dev/ttyRS485-2",
+                "propertyOrder": 1,
+                "description": "The RS-485 port the DMX line is wired to: /dev/ttyRS485-1, /dev/ttyRS485-2 or a WBE2 module port such as /dev/ttyMOD1.",
+                "options": {
+                  "grid_columns": 6
+                }
+              },
+              "name": {
+                "type": "string",
+                "title": "Name",
+                "default": "DMX 1",
+                "propertyOrder": 2,
+                "description": "Shown on the tab of the port. Any text.",
+                "options": {
+                  "grid_columns": 6
+                }
+              },
+              "refresh_hz": {
+                "type": "integer",
+                "title": "Frame rate, Hz",
+                "minimum": 1,
+                "maximum": 44,
+                "default": 40,
+                "propertyOrder": 3,
+                "description": "How many times a second all channels are sent. Lower it to 25–30 if fixtures flicker. Default 40, the maximum for 512 channels.",
+                "options": {
+                  "grid_columns": 4
+                }
+              },
+              "on_start": {
+                "type": "string",
+                "title": "On start",
+                "enum": [
+                  "restore",
+                  "zero"
+                ],
+                "default": "restore",
+                "propertyOrder": 4,
+                "description": "Channel values right after the service starts (reboot, saving these settings). Restore: the same as before the stop. For that the values are written to the controller's storage, but only once the light has stood still for 10 seconds, so a running scene writes nothing. All channels 0: start dark; nothing is stored, and the light also goes out when these settings are saved. Default: restore.",
+                "options": {
+                  "enum_titles": [
+                    "Restore last values",
+                    "All channels 0"
+                  ],
+                  "grid_columns": 4
+                }
+              },
+              "on_stop": {
+                "type": "string",
+                "title": "On stop",
+                "enum": [
+                  "hold",
+                  "blackout"
+                ],
+                "default": "hold",
+                "propertyOrder": 5,
+                "description": "What happens when the service stops. Hold: frames just stop and the fixtures keep their last values until their own timeout. Blackout: all channels are set to 0 first. Default: hold.",
+                "options": {
+                  "enum_titles": [
+                    "Hold last frame",
+                    "Blackout"
+                  ],
+                  "grid_columns": 4
+                }
+              },
+              "network": {
+                "type": "object",
+                "title": "Network input",
+                "propertyOrder": 50,
+                "_format": "grid",
+                "description": "A lighting console or software (QLC+, MadMapper, …) can drive this port over the network. While it sends, its frames go to the line and the device channels show its values; a few seconds after it stops, the port returns to the values set over MQTT. Both protocols are off by default: anyone on the network could drive the lights.",
+                "options": {
+                  "disable_collapse": true,
+                  "disable_edit_json": true,
+                  "disable_properties": true
+                },
+                "properties": {
+                  "artnet": {
+                    "type": "boolean",
+                    "title": "Art-Net",
+                    "default": false,
+                    "_format": "checkbox",
+                    "propertyOrder": 1,
+                    "description": "Accept Art-Net, UDP port 6454.",
+                    "options": {
+                      "grid_columns": 6
+                    }
+                  },
+                  "artnet_universe": {
+                    "type": "integer",
+                    "title": "Art-Net port address",
+                    "minimum": 0,
+                    "maximum": 32767,
+                    "default": 0,
+                    "propertyOrder": 2,
+                    "description": "The Art-Net universe this port listens to, 0–32767 (net·subnet·universe). QLC+ shows address 0 as Universe 1. Used while Art-Net is on. Default 0; every port needs its own number.",
+                    "options": {
+                      "grid_columns": 6
+                    }
+                  },
+                  "sacn": {
+                    "type": "boolean",
+                    "title": "sACN",
+                    "default": false,
+                    "_format": "checkbox",
+                    "propertyOrder": 3,
+                    "description": "Accept sACN (E1.31), UDP port 5568, unicast or multicast. With several senders the one with the higher priority wins.",
+                    "options": {
+                      "grid_columns": 6
+                    }
+                  },
+                  "sacn_universe": {
+                    "type": "integer",
+                    "title": "sACN universe",
+                    "minimum": 1,
+                    "maximum": 63999,
+                    "default": 1,
+                    "propertyOrder": 4,
+                    "description": "The sACN universe this port listens to, 1–63999. Used while sACN is on. Default 1; every port needs its own number.",
+                    "options": {
+                      "grid_columns": 6
+                    }
+                  }
+                }
+              },
+              "advanced": {
+                "type": "object",
+                "title": "Advanced",
+                "propertyOrder": 100,
+                "_format": "grid",
+                "description": "Signal timing. The defaults suit most fixtures; change them only when a fixture flickers or does not respond.",
+                "options": {
+                  "collapsed": true,
+                  "disable_edit_json": true,
+                  "disable_properties": true
+                },
+                "properties": {
+                  "slots": {
+                    "type": "integer",
+                    "title": "Channels per frame",
+                    "minimum": 24,
+                    "maximum": 512,
+                    "default": 512,
+                    "propertyOrder": 1,
+                    "description": "How many channels every frame carries. Fewer channels make frames shorter, but some fixtures expect all 512. Default 512.",
+                    "options": {
+                      "grid_columns": 4
+                    }
+                  },
+                  "break_us": {
+                    "type": "integer",
+                    "title": "BREAK, µs",
+                    "minimum": 88,
+                    "maximum": 1000,
+                    "default": 176,
+                    "propertyOrder": 2,
+                    "description": "The low level that starts every frame. Lengthen it to 250–400 if fixtures miss the start of a frame. Default 176, the standard allows 88 and more. On the line it comes out up to 80 µs longer.",
+                    "options": {
+                      "grid_columns": 4
+                    }
+                  },
+                  "mab_us": {
+                    "type": "integer",
+                    "title": "MAB, µs",
+                    "minimum": 8,
+                    "maximum": 1000,
+                    "default": 20,
+                    "propertyOrder": 3,
+                    "description": "The pause between BREAK and the first byte. Lengthen it to 50–100 for slow fixtures. Default 20, the standard allows 8 and more. On the line it comes out 40–80 µs longer.",
+                    "options": {
+                      "grid_columns": 4
+                    }
+                  },
+                  "slot_gap_us": {
+                    "type": "integer",
+                    "title": "Pause between channels, µs",
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "default": 0,
+                    "propertyOrder": 4,
+                    "description": "A pause after every channel for fixtures that cannot keep up with the data and flicker. The frame gets longer, so the frame rate drops: 50 µs at 512 channels gives about 16 Hz. The real pause is about the set value or longer. Default 0: channels go back to back, as ordinary consoles send them.",
+                    "options": {
+                      "grid_columns": 12
+                    }
+                  }
+                }
+              }
+            },
+            "required": [
+              "path"
+            ]
+          },
+          "devices": {
+            "type": "array",
+            "title": "Devices",
+            "propertyOrder": 2,
+            "_format": "table",
+            "description": "One row is one fixture or a group of identical ones. Type: Layout for ordinary fixtures, Channels for anything else. Layout: one letter per DMX channel in the fixture's order — d dimmer, r g b colour, w white, a amber, u UV, c cold white, h warm white, s strobe, m mode (program channel), _ unused; e.g. dRGBW; default rgbw. Resolution: 8 bit, or 16 bit when every channel of the fixture takes two addresses. Channels: how many plain channels the device has. Address: the first DMX address; 0, the default, places the device right after the previous one. Count: above 1 gives that many identical devices on consecutive addresses plus a group device for all of them. MQTT id: made from the name (Фасад → dmx_fasad); fill it in only to pin a specific id.",
+            "uniqueItems": true,
+            "items": {
+              "type": "object",
+              "title": "Device",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "title": "Name",
+                  "default": "Device",
+                  "minLength": 1,
+                  "propertyOrder": 1
+                },
+                "type": {
+                  "type": "string",
+                  "title": "Type",
+                  "enum": [
+                    "layout",
+                    "channels"
+                  ],
+                  "default": "layout",
+                  "propertyOrder": 2,
+                  "options": {
+                    "enum_titles": [
+                      "Layout",
+                      "Channels"
+                    ]
+                  }
+                },
+                "layout": {
+                  "type": "string",
+                  "title": "Layout",
+                  "pattern": "^[dDrRgGbBwWaAuUcChHsSmM_]{1,64}$",
+                  "default": "rgbw",
+                  "propertyOrder": 3,
+                  "options": {
+                    "dependencies": {
+                      "type": [
+                        "layout"
+                      ]
+                    }
+                  }
+                },
+                "bits": {
+                  "type": "integer",
+                  "title": "Resolution",
+                  "enum": [
+                    8,
+                    16
+                  ],
+                  "default": 8,
+                  "propertyOrder": 4,
+                  "options": {
+                    "enum_titles": [
+                      "8 bit",
+                      "16 bit"
+                    ],
+                    "dependencies": {
+                      "type": [
+                        "layout"
+                      ]
+                    }
+                  }
+                },
+                "channels": {
+                  "type": "integer",
+                  "title": "Channels",
+                  "minimum": 1,
+                  "maximum": 512,
+                  "default": 1,
+                  "propertyOrder": 5,
+                  "options": {
+                    "dependencies": {
+                      "type": [
+                        "channels"
+                      ]
+                    }
+                  }
+                },
+                "address": {
+                  "type": "integer",
+                  "title": "Address",
+                  "minimum": 0,
+                  "maximum": 512,
+                  "default": 0,
+                  "propertyOrder": 6
+                },
+                "count": {
+                  "type": "integer",
+                  "title": "Count",
+                  "minimum": 1,
+                  "maximum": 512,
+                  "default": 1,
+                  "propertyOrder": 7
+                },
+                "id": {
+                  "type": "string",
+                  "title": "MQTT id",
+                  "pattern": "^([a-z0-9_]{1,32})?$",
+                  "default": "",
+                  "propertyOrder": 8
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "options": {
+                "disable_edit_json": true,
+                "disable_properties": true
+              }
+            },
+            "options": {
+              "disable_array_reorder": true,
+              "disable_collapse": true,
+              "disable_array_delete_last_row": true,
+              "disable_array_delete_all_rows": true
+            }
+          }
+        },
+        "required": [
+          "settings",
+          "devices"
+        ],
+        "options": {
+          "disable_edit_json": true,
+          "disable_properties": true,
+          "disable_collapse": true,
+          "wb": {
+            "disable_title": true
+          }
+        }
+      },
+      "options": {
+        "disable_array_reorder": true,
+        "disable_collapse": true,
+        "disable_array_delete_last_row": true
+      }
+    }
+  },
+  "required": [
+    "ports"
+  ],
+  "translations": {
+    "ru": {
+      "DMX512 output": "Выход DMX512",
+      "DMX512 fixtures driven from the controller's own RS-485 ports or WBE2 RS-485 modules. Each port is one DMX line with its devices. A port must be disabled in the serial device driver settings first (Settings → Configuration files → Serial device driver), the same way as for wb-mqtt-mbgate.": "DMX512-приборы, управляемые с портов RS-485 контроллера или модулей WBE2 RS-485. Порт — одна линия DMX со своими приборами. Порт нужно сначала отключить в настройках драйвера последовательных устройств (Настройки → Конфигурационные файлы → Настройка драйвера serial-устройств), как для wb-mqtt-mbgate.",
+      "Ports": "Порты",
+      "Port": "Порт",
+      "Port settings": "Настройки порта",
+      "Name": "Название",
+      "Enabled": "Включён",
+      "Send DMX on this port. Keep it off until the port is disabled in the serial device driver settings, otherwise both drivers write to the same line. Default: off.": "Выдавать DMX на этом порту. Не включайте, пока порт не отключён в настройках драйвера serial-устройств, иначе оба драйвера пишут в одну линию. По умолчанию выключен.",
+      "Serial port": "Порт",
+      "Frame rate, Hz": "Частота кадров, Гц",
+      "On start": "При старте",
+      "On stop": "При остановке",
+      "Restore last values": "Восстановить последние значения",
+      "All channels 0": "Все каналы в 0",
+      "Hold last frame": "Оставить как есть",
+      "Blackout": "Погасить всё",
+      "Advanced": "Дополнительно",
+      "Channels per frame": "Каналов в кадре",
+      "BREAK, µs": "BREAK, мкс",
+      "MAB, µs": "MAB, мкс",
+      "Pause between channels, µs": "Пауза между каналами, мкс",
+      "Devices": "Приборы",
+      "Device id": "Идентификатор",
+      "Type": "Тип",
+      "Start address": "Стартовый адрес",
+      "Count": "Количество",
+      "The RS-485 port the DMX line is wired to: /dev/ttyRS485-1, /dev/ttyRS485-2 or a WBE2 module port such as /dev/ttyMOD1.": "Порт RS-485, к которому подключена линия DMX: /dev/ttyRS485-1, /dev/ttyRS485-2 или порт модуля WBE2, например /dev/ttyMOD1.",
+      "Shown on the tab of the port. Any text.": "Показывается на вкладке порта. Любой текст.",
+      "How many times a second all channels are sent. Lower it to 25–30 if fixtures flicker. Default 40, the maximum for 512 channels.": "Сколько раз в секунду отправляются все каналы. Снизьте до 25–30, если приборы мерцают. По умолчанию 40, это максимум для 512 каналов.",
+      "Channel values right after the service starts (reboot, saving these settings). Restore: the same as before the stop. For that the values are written to the controller's storage, but only once the light has stood still for 10 seconds, so a running scene writes nothing. All channels 0: start dark; nothing is stored, and the light also goes out when these settings are saved. Default: restore.": "Значения каналов сразу после запуска сервиса (перезагрузка, сохранение этих настроек). Восстановить: те же, что были до остановки. Для этого значения записываются в память контроллера, но только когда свет 10 секунд стоит на месте, так что бегущая сцена ничего не пишет. Все каналы в 0: начать с темноты; ничего не хранится, и свет гаснет также при сохранении этих настроек. По умолчанию: восстановить.",
+      "What happens when the service stops. Hold: frames just stop and the fixtures keep their last values until their own timeout. Blackout: all channels are set to 0 first. Default: hold.": "Что происходит при остановке сервиса. Оставить: кадры просто прекращаются, приборы держат последние значения до своего таймаута. Погасить: сначала все каналы ставятся в 0. По умолчанию: оставить.",
+      "Network input": "Приём из сети",
+      "Art-Net port address": "Адрес порта Art-Net",
+      "sACN universe": "Вселенная sACN",
+      "A lighting console or software (QLC+, MadMapper, …) can drive this port over the network. While it sends, its frames go to the line and the device channels show its values; a few seconds after it stops, the port returns to the values set over MQTT. Both protocols are off by default: anyone on the network could drive the lights.": "Световой пульт или программа (QLC+, MadMapper, …) может управлять этим портом по сети. Пока она шлёт, на линию идут её кадры, а каналы приборов показывают её значения; через несколько секунд после остановки порт возвращается к значениям из MQTT. Оба протокола по умолчанию выключены: иначе светом может управлять любой в сети.",
+      "Accept Art-Net, UDP port 6454.": "Принимать Art-Net, порт UDP 6454.",
+      "The Art-Net universe this port listens to, 0–32767 (net·subnet·universe). QLC+ shows address 0 as Universe 1. Used while Art-Net is on. Default 0; every port needs its own number.": "Вселенная Art-Net, которую слушает этот порт, 0–32767 (net·subnet·universe). В QLC+ адрес 0 называется Universe 1. Действует, пока включён Art-Net. По умолчанию 0; у каждого порта свой номер.",
+      "Accept sACN (E1.31), UDP port 5568, unicast or multicast. With several senders the one with the higher priority wins.": "Принимать sACN (E1.31), порт UDP 5568, unicast или multicast. Если источников несколько, побеждает тот, у кого выше приоритет.",
+      "The sACN universe this port listens to, 1–63999. Used while sACN is on. Default 1; every port needs its own number.": "Вселенная sACN, которую слушает этот порт, 1–63999. Действует, пока включён sACN. По умолчанию 1; у каждого порта свой номер.",
+      "Signal timing. The defaults suit most fixtures; change them only when a fixture flickers or does not respond.": "Тайминги сигнала. Значения по умолчанию подходят большинству приборов; меняйте их, только если прибор мерцает или не реагирует.",
+      "How many channels every frame carries. Fewer channels make frames shorter, but some fixtures expect all 512. Default 512.": "Сколько каналов в каждом кадре. Чем меньше каналов, тем короче кадр, но некоторым приборам нужны все 512. По умолчанию 512.",
+      "The low level that starts every frame. Lengthen it to 250–400 if fixtures miss the start of a frame. Default 176, the standard allows 88 and more. On the line it comes out up to 80 µs longer.": "Низкий уровень, с которого начинается каждый кадр. Увеличьте до 250–400, если приборы теряют начало кадра. По умолчанию 176, стандарт допускает от 88. На линии выходит длиннее на величину до 80 мкс.",
+      "The pause between BREAK and the first byte. Lengthen it to 50–100 for slow fixtures. Default 20, the standard allows 8 and more. On the line it comes out 40–80 µs longer.": "Пауза между BREAK и первым байтом. Увеличьте до 50–100 для медленных приборов. По умолчанию 20, стандарт допускает от 8. На линии выходит длиннее на 40–80 мкс.",
+      "A pause after every channel for fixtures that cannot keep up with the data and flicker. The frame gets longer, so the frame rate drops: 50 µs at 512 channels gives about 16 Hz. The real pause is about the set value or longer. Default 0: channels go back to back, as ordinary consoles send them.": "Пауза после каждого канала для приборов, которые не успевают принимать данные и мерцают. Кадр становится длиннее, поэтому частота кадров падает: 50 мкс при 512 каналах дают около 16 Гц. Настоящая пауза примерно равна заданной или длиннее. По умолчанию 0: каналы идут вплотную, как у обычных пультов.",
+      "One row is one fixture or a group of identical ones. Type: Layout for ordinary fixtures, Channels for anything else. Layout: one letter per DMX channel in the fixture's order — d dimmer, r g b colour, w white, a amber, u UV, c cold white, h warm white, s strobe, m mode (program channel), _ unused; e.g. dRGBW; default rgbw. Resolution: 8 bit, or 16 bit when every channel of the fixture takes two addresses. Channels: how many plain channels the device has. Address: the first DMX address; 0, the default, places the device right after the previous one. Count: above 1 gives that many identical devices on consecutive addresses plus a group device for all of them. MQTT id: made from the name (Фасад → dmx_fasad); fill it in only to pin a specific id.": "Строка — один прибор или группа одинаковых. Тип: «Раскладка» для обычных приборов, «Каналы» для всего остального. Раскладка: по букве на DMX-канал в порядке прибора — d диммер, r g b цвет, w белый, a янтарный, u УФ, c холодный белый, h тёплый белый, s строб, m режим (канал программ), _ не используется; например dRGBW; по умолчанию rgbw. Разрядность: 8 бит, или 16 бит, если каждый канал прибора занимает два адреса. Каналов: сколько простых каналов у прибора. Адрес: первый адрес DMX; 0, значение по умолчанию, ставит прибор сразу после предыдущего. Количество: больше 1 даёт столько одинаковых приборов на адресах подряд плюс групповое устройство для всех сразу. MQTT-идентификатор: строится из названия (Фасад → dmx_fasad); заполняйте его, только если нужен конкретный.",
+      "Layout": "Раскладка",
+      "Resolution": "Разрядность",
+      "8 bit": "8 бит",
+      "16 bit": "16 бит",
+      "MQTT id": "MQTT-идентификатор",
+      "Address": "Адрес",
+      "Device": "Прибор",
+      "Channels": "Каналы"
+    }
+  }
+}

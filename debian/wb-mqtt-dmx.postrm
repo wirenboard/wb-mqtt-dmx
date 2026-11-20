@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -e
+
+CONFFILE=/etc/wb-mqtt-dmx.conf
+
+if [ "$1" = "purge" ]; then
+    rm -f $CONFFILE
+    rm -f $CONFFILE.default
+    # channel values saved for "restore last values"
+    rm -rf /var/lib/wb-mqtt-dmx
+fi
+
+#DEBHELPER#
